@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mahakaleshwar Fuels — Daily Reckoning</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --gold:#C9973A;--gold-light:#F5E6C8;--gold-dark:#8B6520;--gold-mid:#A87C2A;
+  --ioc-red:#CC1E1E;--ioc-dark:#8B0000;
+  --cream:#FDFAF4;--cream-dark:#F5F0E8;--cream-border:#E8DFC8;
+  --ink:#1A1208;--ink-mid:#3D2E14;--ink-light:#7A6340;
+  --white:#FFFFFF;
+  --green:#1D6B4A;--green-light:#E8F5EE;
+  --red:#8B1A1A;--red-light:#FDF0F0;
+  --blue:#1A3D6B;--blue-light:#EEF3FA;
+  --r:6px;--rl:10px;
+  --font:'Cormorant Garamond',serif;
+  --ui:'DM Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+
+/* BACKGROUND — canvas driven */
+body{
+  background:#000;
+  font-family:var(--ui);
+  color:var(--ink);
+  min-height:100vh;
+  overflow-x:hidden;
+}
+.bg-canvas{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  z-index:0;pointer-events:none;
+}
+#bgCanvas{
+  position:absolute;top:0;left:0;width:100%;height:100%;
+  display:block;
+}
+/* Corner ornaments */
+.corner{position:fixed;width:140px;height:140px;pointer-events:none;z-index:1;opacity:.7}
+.corner-tl{top:0;left:0}
+.corner-tr{top:0;right:0;transform:scaleX(-1)}
+.corner-bl{bottom:0;left:0;transform:scaleY(-1)}
+.corner-br{bottom:0;right:0;transform:scale(-1)}
+/* Floating particles (unused now) */
+.particle{display:none}
+
+/* MAIN APP */
+.app{
+  position:relative;z-index:2;
+  max-width:860px;margin:0 auto;padding:16px;
+  animation:fadeIn .8s ease both;
+}
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* HEADER */
+.header{
+  background:linear-gradient(135deg,var(--ink) 0%,#2A1A08 50%,var(--ink) 100%);
+  border:1px solid rgba(201,151,58,.3);
+  border-radius:var(--rl);
+  padding:20px 24px;
+  margin-bottom:16px;
+  position:relative;
+  overflow:hidden;
+}
+.header::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);
+  animation:scanline 3s ease-in-out infinite;
+}
+@keyframes scanline{0%,100%{opacity:.4}50%{opacity:1}}
+.header::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(201,151,58,.4),transparent);
+}
+.header-inner{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.brand-block{display:flex;align-items:center;gap:14px}
+.brand-emblem{
+  width:52px;height:52px;border-radius:50%;
+  border:2px solid var(--gold);
+  background:radial-gradient(circle,#3D2E14 0%,var(--ink) 100%);
+  display:flex;align-items:center;justify-content:center;
+  font-size:24px;flex-shrink:0;
+  box-shadow:0 0 20px rgba(201,151,58,.2);
+  animation:glow 3s ease-in-out infinite;
+}
+@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(201,151,58,.2)}50%{box-shadow:0 0 35px rgba(201,151,58,.4)}}
+.brand-text{}
+.brand-name{
+  font-family:var(--font);font-size:22px;font-weight:700;
+  color:var(--gold);letter-spacing:.02em;line-height:1.1;
+}
+.brand-sub{font-size:11px;color:rgba(201,151,58,.6);margin-top:3px;letter-spacing:.08em;text-transform:uppercase}
+.ioc-badge{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(204,30,30,.15);border:1px solid rgba(204,30,30,.3);
+  border-radius:var(--r);padding:6px 12px;
+}
+.ioc-dot{width:10px;height:10px;border-radius:50%;background:var(--ioc-red);animation:pulse 2s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(.9)}}
+.ioc-text{font-size:11px;color:rgba(255,255,255,.7);letter-spacing:.06em;text-transform:uppercase}
+.header-right{text-align:right}
+.header-date{font-size:12px;color:rgba(201,151,58,.5);letter-spacing:.05em;text-transform:uppercase}
+.header-date-val{font-family:var(--font);font-size:16px;color:var(--gold);margin-top:2px}
+
+/* SYNC BAR */
+.sync-bar{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(201,151,58,.08);border:1px solid rgba(201,151,58,.2);
+  border-radius:var(--r);padding:8px 14px;margin-bottom:14px;
+  font-size:12px;color:rgba(201,151,58,.7);
+}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:rgba(201,151,58,.3);flex-shrink:0}
+.sync-dot.ok{background:#4CAF50;box-shadow:0 0 6px rgba(76,175,80,.5)}
+.sync-dot.loading{background:var(--gold);animation:pulse 1s infinite}
+.sync-dot.err{background:var(--ioc-red)}
+
+/* MODE TABS */
+.mode-bar{
+  display:flex;gap:0;background:rgba(201,151,58,.06);
+  border:1px solid rgba(201,151,58,.2);border-radius:var(--rl);
+  padding:4px;margin-bottom:16px;
+}
+.mbtn{
+  flex:1;padding:10px 8px;font-size:12px;font-weight:500;
+  border:none;background:transparent;color:rgba(201,151,58,.5);
+  border-radius:var(--r);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  font-family:var(--ui);transition:all .2s;letter-spacing:.02em;
+}
+.mbtn.active{
+  background:linear-gradient(135deg,var(--gold-dark),var(--gold-mid));
+  color:var(--ink);font-weight:600;
+  box-shadow:0 2px 12px rgba(201,151,58,.3);
+}
+.mbtn:not(.active):hover{color:var(--gold);background:rgba(201,151,58,.08)}
+
+/* STEP BAR */
+.step-bar{display:flex;gap:0;margin-bottom:16px;overflow-x:auto;padding-bottom:2px}
+.step-btn{
+  display:flex;align-items:center;gap:5px;
+  padding:8px 12px;font-size:11px;font-weight:500;
+  border:1px solid rgba(201,151,58,.2);
+  background:rgba(201,151,58,.04);
+  color:rgba(201,151,58,.4);
+  cursor:pointer;white-space:nowrap;
+  font-family:var(--ui);transition:all .15s;
+  letter-spacing:.02em;
+}
+.step-btn:first-child{border-radius:var(--r) 0 0 var(--r)}
+.step-btn:last-child{border-radius:0 var(--r) var(--r) 0}
+.step-btn.active{background:var(--gold);color:var(--ink);border-color:var(--gold);font-weight:600}
+.step-btn.done{background:rgba(201,151,58,.15);color:var(--gold);border-color:rgba(201,151,58,.3)}
+
+/* CARDS */
+.card{
+  background:rgba(253,250,244,.97);
+  border:1px solid var(--cream-border);
+  border-radius:var(--rl);
+  padding:18px 20px;margin-bottom:12px;
+  box-shadow:0 2px 16px rgba(0,0,0,.15);
+  position:relative;overflow:hidden;
+}
+.card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);
+  opacity:.4;
+}
+.card-title{
+  font-family:var(--font);font-size:15px;font-weight:600;
+  color:var(--ink-mid);margin-bottom:14px;
+  display:flex;align-items:center;gap:8px;
+  border-bottom:1px solid var(--cream-border);padding-bottom:10px;
+  letter-spacing:.01em;
+}
+
+/* DIVIDER */
+.gold-divider{height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:14px 0;opacity:.3}
+
+/* FORM */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px}
+.field{display:flex;flex-direction:column;gap:4px}
+.lbl{font-size:10px;font-weight:600;color:var(--ink-light);text-transform:uppercase;letter-spacing:.06em}
+.sublbl{font-size:10px;color:var(--gold-mid);margin-top:-2px;font-style:italic}
+input[type=number],input[type=text],input[type=password]{
+  width:100%;padding:8px 11px;font-size:13px;
+  color:var(--ink);background:var(--cream);
+  border:1px solid var(--cream-border);border-radius:var(--r);
+  outline:none;font-family:var(--ui);transition:all .15s;
+}
+input:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(201,151,58,.12);background:var(--white)}
+
+/* BUTTONS */
+.btn-primary{
+  padding:10px 22px;
+  background:linear-gradient(135deg,var(--gold-dark),var(--gold));
+  color:var(--ink);border:none;border-radius:var(--r);
+  font-size:13px;font-weight:600;cursor:pointer;
+  display:inline-flex;align-items:center;gap:7px;
+  font-family:var(--ui);letter-spacing:.02em;
+  box-shadow:0 3px 12px rgba(201,151,58,.3);
+  transition:all .2s;
+}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 5px 18px rgba(201,151,58,.4)}
+.btn-primary:active{transform:translateY(0)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-secondary{
+  padding:9px 18px;background:var(--cream);color:var(--ink-mid);
+  border:1px solid var(--cream-border);border-radius:var(--r);
+  font-size:13px;font-weight:500;cursor:pointer;
+  display:inline-flex;align-items:center;gap:7px;
+  font-family:var(--ui);transition:all .15s;
+}
+.btn-secondary:hover{background:var(--gold-light);border-color:var(--gold)}
+.btn-row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+
+/* TAGS */
+.tag{display:inline-flex;align-items:center;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.tag-hsd{background:var(--blue-light);color:var(--blue)}
+.tag-ms{background:var(--green-light);color:var(--green)}
+.tag-exp{background:var(--gold-light);color:var(--gold-dark)}
+.tag-mob{background:#F3EEF8;color:#6B21A8}
+.tag-dep{background:#FFF3E0;color:#E65100}
+
+/* CALC ROWS */
+.calc-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px;border-bottom:1px solid var(--cream-border)}
+.calc-row:last-child{border-bottom:none;font-weight:600;font-size:14px;padding-top:8px}
+.calc-lbl{color:var(--ink-light)}
+.calc-val{color:var(--green);font-weight:600}
+
+/* LIST ITEMS */
+.list-item{display:flex;align-items:center;gap:8px;padding:9px 11px;background:var(--cream);border:1px solid var(--cream-border);border-radius:var(--r);margin-bottom:6px}
+.list-item-body{flex:1;min-width:0}
+.list-item-title{font-size:13px;font-weight:500;color:var(--ink)}
+.list-item-sub{font-size:11px;color:var(--ink-light);margin-top:1px}
+.list-item-amount{font-size:13px;font-weight:700;color:var(--green);white-space:nowrap}
+.rm-btn{background:none;border:none;cursor:pointer;color:var(--ink-light);font-size:15px;padding:0 3px;flex-shrink:0;transition:color .15s}
+.rm-btn:hover{color:var(--red)}
+
+/* PAYTM NOZZLE */
+.paytm-nozzle{background:var(--cream);border:1px solid var(--cream-border);border-radius:var(--r);padding:10px 12px;margin-bottom:8px}
+.pn-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+
+/* ALERTS */
+.alert-info{background:var(--blue-light);border:1px solid rgba(26,61,107,.2);border-radius:var(--r);padding:9px 13px;font-size:12px;color:var(--blue);margin-bottom:10px}
+.alert-warn{background:#FFF8E1;border:1px solid rgba(201,151,58,.3);border-radius:var(--r);padding:9px 13px;font-size:12px;color:var(--gold-dark);margin-bottom:10px}
+.alert-success{background:var(--green-light);border:1px solid rgba(29,107,74,.2);border-radius:var(--r);padding:9px 13px;font-size:12px;color:var(--green);margin-bottom:10px}
+
+/* REPORT */
+.report{background:var(--cream);border:1px solid var(--cream-border);border-radius:var(--rl);overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.12)}
+.report-header{
+  background:linear-gradient(135deg,var(--ink) 0%,#2A1A08 100%);
+  padding:22px 24px;position:relative;overflow:hidden;
+}
+.report-header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);}
+.report-title{font-family:var(--font);font-size:20px;font-weight:700;color:var(--gold);letter-spacing:.02em}
+.report-sub{font-size:11px;color:rgba(201,151,58,.5);margin-top:3px;letter-spacing:.06em;text-transform:uppercase}
+.report-section{padding:14px 22px;border-bottom:1px solid var(--cream-border)}
+.report-section:last-child{border-bottom:none}
+.report-section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-light);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.report-section-title::after{content:'';flex:1;height:1px;background:var(--cream-border)}
+.rtable{width:100%;border-collapse:collapse;font-size:12px}
+.rtable th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-light);padding:5px 7px;border-bottom:1px solid var(--cream-border)}
+.rtable td{padding:7px 7px;border-bottom:1px solid rgba(232,223,200,.5);color:var(--ink)}
+.rtable tr:last-child td{border-bottom:none}
+.rtable .right{text-align:right;font-weight:600;color:var(--green)}
+.summary-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px dashed rgba(232,223,200,.7)}
+.summary-row:last-child{border-bottom:none;border-top:1px solid var(--cream-border);font-weight:700;font-size:14px;padding-top:10px;margin-top:4px}
+.summary-lbl{color:var(--ink-light)}
+.summary-val{font-weight:600;color:var(--ink)}
+.final-cash-box{
+  background:linear-gradient(135deg,var(--ink),#2A1A08);
+  border-radius:var(--rl);padding:18px 22px;
+  display:flex;justify-content:space-between;align-items:center;
+  margin:14px 22px;border:1px solid rgba(201,151,58,.3);
+  position:relative;overflow:hidden;
+}
+.final-cash-box::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);}
+.fc-label{font-size:12px;color:rgba(201,151,58,.7);letter-spacing:.05em;text-transform:uppercase}
+.fc-val{font-family:var(--font);font-size:26px;font-weight:700;color:var(--gold)}
+
+/* LOCK */
+.lock-wrap{display:flex;justify-content:center;padding:24px 16px}
+.lock-box{
+  background:rgba(253,250,244,.98);border:1px solid var(--cream-border);
+  border-radius:var(--rl);padding:28px 24px;width:100%;max-width:320px;
+  text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.2);
+  position:relative;overflow:hidden;
+}
+.lock-box::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);}
+.lock-icon{font-size:32px;margin-bottom:12px;display:block}
+.lock-title{font-family:var(--font);font-size:18px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.lock-sub{font-size:12px;color:var(--ink-light);margin-bottom:18px}
+.dots{display:flex;justify-content:center;gap:10px;margin-bottom:18px}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--cream-border);transition:all .2s}
+.dot.on{background:var(--gold);box-shadow:0 0 8px rgba(201,151,58,.4)}
+.numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:240px;margin:0 auto}
+.np-btn{
+  padding:13px;font-size:18px;font-weight:600;color:var(--ink);
+  background:var(--cream);border:1px solid var(--cream-border);
+  border-radius:var(--r);cursor:pointer;font-family:var(--font);transition:all .15s;
+}
+.np-btn:hover{background:var(--gold-light);border-color:var(--gold)}
+.np-btn:active{transform:scale(.95)}
+.lock-err{font-size:12px;color:var(--red);margin-top:10px;min-height:18px}
+
+/* CUMULATIVE */
+.cum-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.cum-card{
+  background:var(--cream);border:1px solid var(--cream-border);
+  border-radius:var(--r);padding:12px 14px;position:relative;overflow:hidden;
+}
+.cum-card::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--gold);opacity:.4}
+.cum-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-light);margin-bottom:4px}
+.cum-val{font-family:var(--font);font-size:20px;font-weight:700;color:var(--ink)}
+.cum-sub{font-size:10px;color:var(--ink-light);margin-top:2px}
+
+/* HIST */
+.hist-item{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border:1px solid var(--cream-border);border-radius:var(--r);margin-bottom:6px;cursor:pointer;transition:all .15s;background:var(--cream)}
+.hist-item:hover{border-color:var(--gold);background:var(--gold-light)}
+.hist-date{font-size:13px;font-weight:600;color:var(--ink);font-family:var(--font)}
+.hist-sub{font-size:11px;color:var(--ink-light);margin-top:2px}
+.hist-amt{font-size:14px;font-weight:700;color:var(--green);font-family:var(--font)}
+
+/* SPINNER */
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(201,151,58,.2);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ORNAMENT */
+.ornament{text-align:center;color:rgba(201,151,58,.3);font-size:18px;letter-spacing:8px;margin:6px 0}
+
+@media(max-width:560px){.grid4{grid-template-columns:1fr 1fr}.grid3{grid-template-columns:1fr 1fr}.header-inner{flex-direction:column;align-items:flex-start}}
+@media print{.bg-canvas,.corner{display:none}.app{padding:0}.card{box-shadow:none}.btn-row{display:none}}
+</style>
+</head>
+<body>
+
+<!-- INTERACTIVE CANVAS BACKGROUND -->
+<div class="bg-canvas">
+  <canvas id="bgCanvas"></canvas>
+  <div id="particles"></div>
+</div>
+
+<!-- CORNER ORNAMENTS -->
+<svg class="corner corner-tl" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M0 0 L140 0 L0 140 Z" fill="rgba(201,151,58,0.03)"/>
+  <path d="M0 0 L70 0 L0 70 Z" fill="rgba(201,151,58,0.05)"/>
+  <path d="M0 0 L35 0 L0 35 Z" fill="rgba(201,151,58,0.07)"/>
+  <line x1="0" y1="140" x2="140" y2="0" stroke="rgba(201,151,58,0.12)" stroke-width="0.5"/>
+  <line x1="0" y1="90" x2="90" y2="0" stroke="rgba(201,151,58,0.08)" stroke-width="0.5"/>
+  <line x1="0" y1="45" x2="45" y2="0" stroke="rgba(201,151,58,0.06)" stroke-width="0.5"/>
+  <circle cx="2" cy="2" r="3" fill="rgba(201,151,58,0.5)"/>
+  <circle cx="20" cy="2" r="1.5" fill="rgba(201,151,58,0.3)"/>
+  <circle cx="2" cy="20" r="1.5" fill="rgba(201,151,58,0.3)"/>
+</svg>
+<svg class="corner corner-tr" viewBox="0 0 140 140" fill="none">
+  <path d="M0 0 L140 0 L0 140 Z" fill="rgba(201,151,58,0.03)"/>
+  <path d="M0 0 L70 0 L0 70 Z" fill="rgba(201,151,58,0.05)"/>
+  <path d="M0 0 L35 0 L0 35 Z" fill="rgba(201,151,58,0.07)"/>
+  <line x1="0" y1="140" x2="140" y2="0" stroke="rgba(201,151,58,0.12)" stroke-width="0.5"/>
+  <line x1="0" y1="90" x2="90" y2="0" stroke="rgba(201,151,58,0.08)" stroke-width="0.5"/>
+  <circle cx="2" cy="2" r="3" fill="rgba(201,151,58,0.5)"/>
+  <circle cx="20" cy="2" r="1.5" fill="rgba(201,151,58,0.3)"/>
+</svg>
+<svg class="corner corner-bl" viewBox="0 0 140 140" fill="none">
+  <path d="M0 0 L140 0 L0 140 Z" fill="rgba(201,151,58,0.03)"/>
+  <path d="M0 0 L70 0 L0 70 Z" fill="rgba(201,151,58,0.05)"/>
+  <line x1="0" y1="140" x2="140" y2="0" stroke="rgba(201,151,58,0.12)" stroke-width="0.5"/>
+  <circle cx="2" cy="2" r="3" fill="rgba(201,151,58,0.5)"/>
+</svg>
+<svg class="corner corner-br" viewBox="0 0 140 140" fill="none">
+  <path d="M0 0 L140 0 L0 140 Z" fill="rgba(201,151,58,0.03)"/>
+  <path d="M0 0 L70 0 L0 70 Z" fill="rgba(201,151,58,0.05)"/>
+  <line x1="0" y1="140" x2="140" y2="0" stroke="rgba(201,151,58,0.12)" stroke-width="0.5"/>
+  <circle cx="2" cy="2" r="3" fill="rgba(201,151,58,0.5)"/>
+</svg>
+
+<div class="app">
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-inner">
+    <div class="brand-block">
+      <div class="brand-emblem">⛽</div>
+      <div class="brand-text">
+        <div class="brand-name">Mahakaleshwar Fuels</div>
+        <div class="brand-sub">Indian Oil Corporation · Daily Reckoning System</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+      <div class="ioc-badge">
+        <div class="ioc-dot"></div>
+        <div class="ioc-text">IndianOil</div>
+      </div>
+      <div class="header-right">
+        <div class="header-date">Today</div>
+        <div class="header-date-val" id="todayLabel"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SYNC BAR -->
+<div class="sync-bar">
+  <div class="sync-dot loading" id="syncDot"></div>
+  <span id="syncMsg">Connecting to cloud…</span>
+</div>
+
+<!-- MODE TABS -->
+<div class="mode-bar">
+  <button class="mbtn active" id="mgrBtn" onclick="setMode('manager')">✏️ Manager Entry</button>
+  <button class="mbtn" id="ownBtn" onclick="setMode('owner')">🔐 Owner Report</button>
+  <button class="mbtn" id="histBtn" onclick="setMode('history')">📋 History</button>
+  <button class="mbtn" id="qryBtn" onclick="setMode('query')">🔍 Query</button>
+</div>
+
+<!-- MANAGER -->
+<div id="managerView">
+  <div class="step-bar" id="stepBar"></div>
+  <div id="stepContent"></div>
+</div>
+
+<!-- OWNER -->
+<div id="ownerView" style="display:none">
+  <div id="lockScreen">
+    <div class="lock-wrap">
+      <div class="lock-box">
+        <span class="lock-icon">🔐</span>
+        <div class="lock-title">Owner Access</div>
+        <div class="lock-sub">Mahakaleshwar Fuels — Authorised Personnel Only</div>
+        <div class="dots">
+          <div class="dot" id="d0"></div><div class="dot" id="d1"></div>
+          <div class="dot" id="d2"></div><div class="dot" id="d3"></div>
+        </div>
+        <div class="numpad">
+          <button class="np-btn" onclick="np('1')">1</button>
+          <button class="np-btn" onclick="np('2')">2</button>
+          <button class="np-btn" onclick="np('3')">3</button>
+          <button class="np-btn" onclick="np('4')">4</button>
+          <button class="np-btn" onclick="np('5')">5</button>
+          <button class="np-btn" onclick="np('6')">6</button>
+          <button class="np-btn" onclick="np('7')">7</button>
+          <button class="np-btn" onclick="np('8')">8</button>
+          <button class="np-btn" onclick="np('9')">9</button>
+          <button class="np-btn" onclick="npClr()" style="font-size:11px;font-family:var(--ui)">CLR</button>
+          <button class="np-btn" onclick="np('0')">0</button>
+          <button class="np-btn" onclick="npBack()">⌫</button>
+        </div>
+        <div class="lock-err" id="lockErr"></div>
+      </div>
+    </div>
+  </div>
+  <div id="ownerReport" style="display:none"></div>
+</div>
+
+<!-- HISTORY -->
+<div id="historyView" style="display:none">
+  <div class="card">
+    <div class="card-title" style="justify-content:space-between">
+      <span>📅 Calendar</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="calPrev()" style="background:none;border:1px solid var(--cream-border);border-radius:var(--r);width:30px;height:30px;cursor:pointer;font-size:16px;color:var(--ink-mid);display:flex;align-items:center;justify-content:center">‹</button>
+        <span id="calMonthLabel" style="font-family:var(--font);font-size:16px;font-weight:700;color:var(--ink);min-width:130px;text-align:center"></span>
+        <button onclick="calNext()" style="background:none;border:1px solid var(--cream-border);border-radius:var(--r);width:30px;height:30px;cursor:pointer;font-size:16px;color:var(--ink-mid);display:flex;align-items:center;justify-content:center">›</button>
+      </div>
+    </div>
+    <!-- Month summary strip -->
+    <div id="calMonthSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px"></div>
+    <!-- Day headers -->
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px">
+      <div style="text-align:center;font-size:10px;font-weight:700;color:var(--ink-light);padding:4px 0">Sun</div>
+      <div style="text-align:center;font-size:10px;font-weight:700;color:var(--ink-light);padding:4px 0">Mon</div>
+      <div style="text-align:center;font-size:10px;font-weight:700;color:var(--ink-light);padding:4px 0">Tue</div>
+      <div style="text-align:center;font-size:10px;font-weight:700;color:var(--ink-light);padding:4px 0">Wed</div>
+      <div style="text-align:center;font-size:10px;font-weight:700;color:var(--ink-light);padding:4px 0">Thu</div>
+      <div style="text-align:center;font-size:10px;font-weight:700;color:var(--ink-light);padding:4px 0">Fri</div>
+      <div style="text-align:center;font-size:10px;font-weight:700;color:var(--ink-light);padding:4px 0">Sat</div>
+    </div>
+    <div id="calGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px"></div>
+  </div>
+  <div id="historyDetail" style="display:none"></div>
+</div>
+
+<!-- QUERY -->
+<div id="queryView" style="display:none">
+  <div class="card">
+    <div class="card-title">💬 Ask Anything — Natural Language Query</div>
+    <div style="font-size:12px;color:var(--ink-light);margin-bottom:12px;line-height:1.6">
+      Type your question in plain language. Examples:<br>
+      <span style="color:var(--gold-dark);font-style:italic">"total expense this month"</span> &nbsp;·&nbsp;
+      <span style="color:var(--gold-dark);font-style:italic">"advance given to Ramu"</span> &nbsp;·&nbsp;
+      <span style="color:var(--gold-dark);font-style:italic">"diesel sold 10 to 15 may"</span> &nbsp;·&nbsp;
+      <span style="color:var(--gold-dark);font-style:italic">"credit sales last week"</span> &nbsp;·&nbsp;
+      <span style="color:var(--gold-dark);font-style:italic">"final cash May 12"</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end">
+      <div style="flex:1">
+        <input type="text" id="nlQuery" placeholder="Type your question here…" style="width:100%" onkeydown="if(event.key==='Enter')askQuery()">
+      </div>
+      <button class="btn-primary" onclick="askQuery()" id="askBtn">Ask →</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('total expense this month')">Expenses this month</button>
+      <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('total advance this month')">Advances this month</button>
+      <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('total credit sales this month')">Credit Sales this month</button>
+      <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('fuel sales this month')">Fuel this month</button>
+      <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('final cash all time')">All Final Cash</button>
+      <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('total deposit this month')">Deposit this month</button>
+    </div>
+  </div>
+  <div id="chatHistory"></div>
+</div>
+
+</div>
+
+<script>
+const PASSCODE='1234';
+const STORE_KEY='mf_main';
+const STORE_KEY_CUM='mf_cumulative';
+const NOZZLES_HSD=['H1','H2','H3','H4','H5','H6','H7','H8'];
+const NOZZLES_MS=['M1','M2','M3','M4'];
+
+const hasCloud=typeof window.storage!=='undefined';
+async function cloudGet(k){if(hasCloud){try{const r=await window.storage.get(k,true);return r?JSON.parse(r.value):null;}catch(e){return null;}}else{try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}}}
+async function cloudSet(k,v){const s=JSON.stringify(v);if(hasCloud){try{await window.storage.set(k,s,true);return true;}catch(e){return false;}}else{try{localStorage.setItem(k,s);return true;}catch(e){return false;}}}
+
+let cloudData={records:[],prevClosing:{},prevBF:0,cumulative:{totalLoan:0,totalAdv:0,totalExp:0,totalMobil:0,totalDeposit:0,parties:{},employees:{},expCats:{}}};
+let cloudReady=false;
+let draft={},mobilItems=[],depositItems=[],advItems=[],creditSaleItems=[],pumpExpItems=[];
+let currentStep=0,pin='';
+
+function syncStatus(s,m){
+  const dot=document.getElementById('syncDot'),txt=document.getElementById('syncMsg');
+  dot.className='sync-dot '+s;txt.textContent=m;
+}
+async function loadCloud(){
+  syncStatus('loading','Loading from cloud…');
+  try{
+    const main=await cloudGet(STORE_KEY);
+    if(main){cloudData.records=main.records||[];cloudData.prevClosing=main.prevClosing||{};cloudData.prevBF=main.prevBF||0;}
+    const cum=await cloudGet(STORE_KEY_CUM);
+    if(cum)cloudData.cumulative=cum;
+    cloudReady=true;
+    syncStatus('ok',hasCloud?'Cloud sync active — all devices connected':'Local storage mode');
+  }catch(e){syncStatus('err','Cloud error');cloudReady=true;}
+}
+async function saveCloud(){
+  syncStatus('loading','Saving to cloud…');
+  const main={records:cloudData.records,prevClosing:cloudData.prevClosing,prevBF:cloudData.prevBF};
+  const ok1=await cloudSet(STORE_KEY,main),ok2=await cloudSet(STORE_KEY_CUM,cloudData.cumulative);
+  if(ok1&&ok2){syncStatus('ok','Saved — synced to all devices ✓');setTimeout(()=>syncStatus('ok',hasCloud?'Cloud sync active':'Local storage'),3000);}
+  else syncStatus('err','Save failed');
+}
+
+function fmt(n){return Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmtL(n){return Number(n||0).toFixed(2)+' L';}
+function gv(id){return parseFloat(document.getElementById(id)?.value)||0;}
+function gs(id){return document.getElementById(id)?.value?.trim()||'';}
+function todayKey(){return new Date().toISOString().slice(0,10);}
+document.getElementById('todayLabel').textContent=new Date().toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+
+function setMode(m){
+  ['manager','owner','history','query'].forEach(x=>document.getElementById(x+'View').style.display=m===x?'':'none');
+  ['mgrBtn','ownBtn','histBtn','qryBtn'].forEach((b,i)=>document.getElementById(b).classList.toggle('active',['manager','owner','history','query'][i]===m));
+  if(m==='owner')resetLock();
+  if(m==='history')renderHistory();
+  if(m==='query')initQuery();
+}
+
+function initQuery(){ document.getElementById('chatHistory').innerHTML=''; }
+
+function quickAsk(q){ document.getElementById('nlQuery').value=q; askQuery(); }
+
+async function askQuery(){
+  const q=document.getElementById('nlQuery').value.trim();
+  if(!q)return;
+  const btn=document.getElementById('askBtn');
+  btn.disabled=true; btn.textContent='…';
+
+  // Show user bubble
+  addChatBubble('user', q);
+  document.getElementById('nlQuery').value='';
+
+  // Build data summary for Claude
+  const today=new Date().toISOString().slice(0,10);
+  const nowDate=new Date();
+  const monthStart=`${nowDate.getFullYear()}-${String(nowDate.getMonth()+1).padStart(2,'0')}-01`;
+  const weekStart=new Date(); weekStart.setDate(weekStart.getDate()-6);
+  const weekStartStr=weekStart.toISOString().slice(0,10);
+
+  // Summarise all records into structured text for the AI
+  let dataSummary=`Today: ${today}\nMonth start: ${monthStart}\nWeek start: ${weekStartStr}\n\n`;
+  dataSummary+=`RECORDS (${cloudData.records.length} days):\n`;
+
+  cloudData.records.slice(0,60).forEach(r=>{
+    dataSummary+=`\nDATE: ${r.date}\n`;
+    dataSummary+=`  Fuel: HSD ${(r.hsdNet||0).toFixed(2)}L @₹${r.hsdRsp||0} = ₹${(r.hsdAmt||0).toFixed(2)}, MS ${(r.msNet||0).toFixed(2)}L @₹${r.msRsp||0} = ₹${(r.msAmt||0).toFixed(2)}, Fuel Total=₹${(r.fuelTotal||0).toFixed(2)}\n`;
+    dataSummary+=`  BF=₹${(r.bf||0).toFixed(2)}, Gross=₹${(r.grossTotal||0).toFixed(2)}, Deductions=₹${(r.totalDeductions||0).toFixed(2)}, FinalCash=₹${(r.finalCash||0).toFixed(2)}\n`;
+    dataSummary+=`  Paytm=₹${(r.paytmTotal||0).toFixed(2)}, OTP=₹${(r.otp||0).toFixed(2)}, Tanker=₹${(r.tanker||0).toFixed(2)}, PumpExp=₹${(r.pumpExpF||0).toFixed(2)}, AcctTr=₹${(r.acctTr||0).toFixed(2)}, HoBank=₹${(r.hoBank||0).toFixed(2)}\n`;
+    if((r.pumpExpItems||[]).length) dataSummary+=`  Expenses: ${(r.pumpExpItems||[]).map(x=>`${x.name}${x.person?' ('+x.person+')':''}=₹${x.amt}`).join(', ')}\n`;
+    if((r.advItems||[]).length) dataSummary+=`  Advances: ${(r.advItems||[]).map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
+    if((r.creditSaleItems||[]).length) dataSummary+=`  CreditSales: ${(r.creditSaleItems||[]).map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
+    if((r.depositItems||[]).length) dataSummary+=`  Deposit: ${(r.depositItems||[]).map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
+    if((r.mobilItems||[]).length) dataSummary+=`  Mobil: ${(r.mobilItems||[]).map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
+    const np=r.nozzlePaytm||{};
+    const nzEntries=Object.entries(np).filter(([,v])=>v.card>0);
+    if(nzEntries.length) dataSummary+=`  CardByNozzle: ${nzEntries.map(([n,v])=>`${n}(${v.time})=₹${v.card}`).join(', ')}\n`;
+  });
+
+  const systemPrompt=`You are a smart assistant for Mahakaleshwar Fuels, an Indian Oil petrol pump. 
+You have access to the pump's daily records data below. Answer the user's question with precise numbers, dates, and breakdowns.
+Format answers clearly. Use ₹ for amounts. Group by date when showing multiple days.
+If the user asks about a date range like "10 to 15 may", filter only those dates.
+For "this month" use month start date. For "this week" use week start date. For "today" use today's date.
+If asking about a specific person's expenses/advances, filter by that person's name (case-insensitive partial match).
+Always show: individual entries with dates, subtotals per day if multiple, and a grand total.
+Keep response concise but complete. Use plain text with line breaks and ₹ symbols. No markdown tables — just clean readable text.
+
+PUMP DATA:
+${dataSummary}`;
+
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        system:systemPrompt,
+        messages:[{role:'user',content:q}]
+      })
+    });
+    const data=await resp.json();
+    const answer=data.content?.[0]?.text||'Sorry, could not get an answer. Please try again.';
+    addChatBubble('ai', answer);
+  }catch(e){
+    addChatBubble('ai','Connection error. Please check your internet and try again.');
+  }
+
+  btn.disabled=false; btn.textContent='Ask →';
+}
+
+function addChatBubble(role, text){
+  const hist=document.getElementById('chatHistory');
+  const div=document.createElement('div');
+  div.style.cssText=`margin-bottom:12px;display:flex;flex-direction:column;align-items:${role==='user'?'flex-end':'flex-start'}`;
+
+  const label=document.createElement('div');
+  label.style.cssText=`font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-light);margin-bottom:4px;padding:0 4px`;
+  label.textContent=role==='user'?'You':'Mahakaleshwar AI';
+
+  const bubble=document.createElement('div');
+  bubble.style.cssText=role==='user'
+    ?`background:linear-gradient(135deg,var(--gold-dark),var(--gold-mid));color:var(--ink);padding:11px 15px;border-radius:14px 14px 2px 14px;font-size:13px;max-width:85%;font-family:var(--ui);line-height:1.5;box-shadow:0 2px 8px rgba(201,151,58,.3)`
+    :`background:var(--cream);border:1px solid var(--cream-border);color:var(--ink);padding:13px 16px;border-radius:14px 14px 14px 2px;font-size:13px;max-width:92%;font-family:var(--ui);line-height:1.7;box-shadow:0 2px 8px rgba(0,0,0,.08);white-space:pre-wrap`;
+
+  bubble.textContent=text;
+  div.appendChild(label);
+  div.appendChild(bubble);
+  hist.appendChild(div);
+  div.scrollIntoView({behavior:'smooth',block:'end'});
+}
+
+const STEPS=[
+  {id:'closing',label:'Closing Meters'},
+  {id:'testing',label:'Testing'},
+  {id:'rsp',label:'RSP Rates'},
+  {id:'extras',label:'BF / Mobil / Deposit'},
+  {id:'paytm',label:'Paytm & Card'},
+  {id:'expenses',label:'Expenses'},
+  {id:'report',label:'Final Report'},
+];
+
+function renderStepBar(){
+  document.getElementById('stepBar').innerHTML=STEPS.map((s,i)=>`
+    <button class="step-btn ${i===currentStep?'active':i<currentStep?'done':''}" onclick="goStep(${i})">
+      ${i<currentStep?'✓':i+1} ${s.label}
+    </button>`).join('');
+}
+function goStep(i){if(i<=currentStep){currentStep=i;renderStep();}}
+function nextStep(){if(currentStep<STEPS.length-1){currentStep++;renderStep();}}
+function renderStep(){renderStepBar();({closing:renderClosing,testing:renderTesting,rsp:renderRSP,extras:renderExtras,paytm:renderPaytm,expenses:renderExpenses,report:renderReport})[STEPS[currentStep].id]();}
+
+function renderClosing(){
+  const prev=cloudData.prevClosing;
+  const hf=NOZZLES_HSD.map(n=>`<div class="field"><div class="lbl">${n}</div><div class="sublbl">Opening: ${prev[n]||0}</div><input type="number" id="cl_${n}" value="${draft['cl_'+n]||''}" placeholder="${prev[n]||0}" step="0.01"></div>`).join('');
+  const mf=NOZZLES_MS.map(n=>`<div class="field"><div class="lbl">${n}</div><div class="sublbl">Opening: ${prev[n]||0}</div><input type="number" id="cl_${n}" value="${draft['cl_'+n]||''}" placeholder="${prev[n]||0}" step="0.01"></div>`).join('');
+  document.getElementById('stepContent').innerHTML=`
+    <div class="alert-info">Previous day closing meters auto-loaded as today's opening readings.</div>
+    <div class="card"><div class="card-title"><span class="tag tag-hsd">HSD</span> Diesel Nozzles H1–H8 — Closing Readings</div><div class="grid4">${hf}</div></div>
+    <div class="card"><div class="card-title"><span class="tag tag-ms">MS</span> Petrol Nozzles M1–M4 — Closing Readings</div><div class="grid4">${mf}</div></div>
+    <div id="saleCalc" class="card" style="display:none"><div class="card-title">📊 Gross Sales Calculated</div><div class="grid2" id="sci"></div></div>
+    <div class="btn-row"><button class="btn-primary" onclick="calcSales()">Calculate Sales →</button></div>`;
+}
+function calcSales(){
+  const prev=cloudData.prevClosing;let hg=0,mg=0,hr='',mr='';
+  NOZZLES_HSD.forEach(n=>{const o=parseFloat(prev[n])||0,c=gv('cl_'+n)||o,s=Math.max(0,c-o);draft['cl_'+n]=c;draft['open_'+n]=o;draft['sale_'+n]=s;hg+=s;hr+=`<div class="calc-row"><span class="calc-lbl">${n}: ${o.toFixed(2)} → ${c.toFixed(2)}</span><span class="calc-val">${fmtL(s)}</span></div>`;});
+  NOZZLES_MS.forEach(n=>{const o=parseFloat(prev[n])||0,c=gv('cl_'+n)||o,s=Math.max(0,c-o);draft['cl_'+n]=c;draft['open_'+n]=o;draft['sale_'+n]=s;mg+=s;mr+=`<div class="calc-row"><span class="calc-lbl">${n}: ${o.toFixed(2)} → ${c.toFixed(2)}</span><span class="calc-val">${fmtL(s)}</span></div>`;});
+  draft.hsdGross=hg;draft.msGross=mg;
+  document.getElementById('saleCalc').style.display='';
+  document.getElementById('sci').innerHTML=`<div><div style="font-size:11px;font-weight:700;color:var(--blue);margin-bottom:8px">HSD Gross: ${fmtL(hg)}</div>${hr}</div><div><div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:8px">MS Gross: ${fmtL(mg)}</div>${mr}</div>`;
+  document.querySelector('.btn-row').innerHTML=`<button class="btn-primary" onclick="nextStep()">Next: Testing →</button>`;
+}
+
+function renderTesting(){
+  document.getElementById('stepContent').innerHTML=`
+    <div class="card"><div class="card-title">🧪 Testing Deductions</div>
+      <div class="grid2">
+        <div class="field"><div class="lbl">HSD Testing (L)</div><input type="number" id="hsdTest" value="${draft.hsdTest||0}" step="0.01"></div>
+        <div class="field"><div class="lbl">MS Testing (L)</div><input type="number" id="msTest" value="${draft.msTest||0}" step="0.01"></div>
+      </div>
+    </div>
+    <div id="netCalc" style="display:none" class="card"><div class="card-title">✅ Net Sales After Testing</div><div id="nci"></div></div>
+    <div class="btn-row"><button class="btn-primary" onclick="calcNet()">Calculate Net →</button></div>`;
+}
+function calcNet(){
+  draft.hsdTest=gv('hsdTest');draft.msTest=gv('msTest');
+  draft.hsdNet=draft.hsdGross-draft.hsdTest;draft.msNet=draft.msGross-draft.msTest;
+  document.getElementById('netCalc').style.display='';
+  document.getElementById('nci').innerHTML=`
+    <div class="calc-row"><span class="calc-lbl">HSD Gross</span><span class="calc-val">${fmtL(draft.hsdGross)}</span></div>
+    <div class="calc-row"><span class="calc-lbl">HSD Testing</span><span class="calc-val" style="color:var(--red)">− ${fmtL(draft.hsdTest)}</span></div>
+    <div class="calc-row"><span class="calc-lbl"><b>HSD Net</b></span><span class="calc-val">${fmtL(draft.hsdNet)}</span></div>
+    <div style="height:8px"></div>
+    <div class="calc-row"><span class="calc-lbl">MS Gross</span><span class="calc-val">${fmtL(draft.msGross)}</span></div>
+    <div class="calc-row"><span class="calc-lbl">MS Testing</span><span class="calc-val" style="color:var(--red)">− ${fmtL(draft.msTest)}</span></div>
+    <div class="calc-row"><span class="calc-lbl"><b>MS Net</b></span><span class="calc-val">${fmtL(draft.msNet)}</span></div>`;
+  document.querySelector('.btn-row').innerHTML=`<button class="btn-primary" onclick="nextStep()">Next: RSP →</button>`;
+}
+
+function renderRSP(){
+  document.getElementById('stepContent').innerHTML=`
+    <div class="card"><div class="card-title">💰 Retail Selling Price</div>
+      <div class="grid2">
+        <div class="field"><div class="lbl">HSD RSP (₹/L)</div><input type="number" id="hsdRsp" value="${draft.hsdRsp||''}" placeholder="e.g. 91.80" step="0.01"></div>
+        <div class="field"><div class="lbl">MS RSP (₹/L)</div><input type="number" id="msRsp" value="${draft.msRsp||''}" placeholder="e.g. 104.50" step="0.01"></div>
+      </div>
+    </div>
+    <div id="amtCalc" style="display:none" class="card"><div class="card-title">💵 Fuel Sale Amounts</div><div id="aci"></div></div>
+    <div class="btn-row"><button class="btn-primary" onclick="calcAmounts()">Calculate Amounts →</button></div>`;
+}
+function calcAmounts(){
+  draft.hsdRsp=gv('hsdRsp');draft.msRsp=gv('msRsp');
+  draft.hsdAmt=draft.hsdNet*draft.hsdRsp;draft.msAmt=draft.msNet*draft.msRsp;
+  draft.fuelTotal=draft.hsdAmt+draft.msAmt;
+  document.getElementById('amtCalc').style.display='';
+  document.getElementById('aci').innerHTML=`
+    <div class="calc-row"><span class="calc-lbl">HSD: ${fmtL(draft.hsdNet)} × ₹${draft.hsdRsp}</span><span class="calc-val">₹${fmt(draft.hsdAmt)}</span></div>
+    <div class="calc-row"><span class="calc-lbl">MS: ${fmtL(draft.msNet)} × ₹${draft.msRsp}</span><span class="calc-val">₹${fmt(draft.msAmt)}</span></div>
+    <div class="calc-row"><span class="calc-lbl"><b>Fuel Sale Total</b></span><span class="calc-val" style="font-size:15px">₹${fmt(draft.fuelTotal)}</span></div>`;
+  document.querySelector('.btn-row').innerHTML=`<button class="btn-primary" onclick="nextStep()">Next: BF / Mobil / Deposit →</button>`;
+}
+
+function renderExtras(){
+  const bf=cloudData.prevBF||0;
+  document.getElementById('stepContent').innerHTML=`
+    <div class="card"><div class="card-title">🔁 Balance Forward</div>
+      <div class="alert-info">Previous day Final Cash = <b>₹${fmt(bf)}</b> — auto-loaded as today's BF.</div>
+      <div class="field"><div class="lbl">Balance Forward (₹)</div><input type="number" id="bfAmt" value="${draft.bf!==undefined?draft.bf:bf}" step="0.01"></div>
+    </div>
+    <div class="card"><div class="card-title"><span class="tag tag-mob">MOBIL</span> Mobil Sales &nbsp;<span style="font-size:11px;color:var(--ink-light);font-weight:400">Amount = Product Name</span></div>
+      <div class="grid3" style="margin-bottom:8px">
+        <div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="mobAmt" placeholder="70" step="0.01"></div>
+        <div class="field"><div class="lbl">Product Name</div><input type="text" id="mobName" placeholder="2T20ML (Q7)"></div>
+        <div class="field"><div class="lbl">Qty (record only)</div><input type="text" id="mobQty" placeholder="optional"></div>
+      </div>
+      <button class="btn-secondary" style="margin-bottom:8px" onclick="addMobil()">+ Add Mobil</button>
+      <div id="mobilList"></div>
+      <div id="mobilTotal" style="font-size:13px;font-weight:700;color:#6B21A8;margin-top:4px"></div>
+    </div>
+    <div class="card"><div class="card-title"><span class="tag tag-dep">DEPOSIT</span> Deposit &nbsp;<span style="font-size:11px;color:var(--ink-light);font-weight:400">Amount = Party Name</span></div>
+      <div class="grid2" style="margin-bottom:8px">
+        <div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="depAmt" placeholder="0" step="0.01"></div>
+        <div class="field"><div class="lbl">Party Name</div><input type="text" id="depName" placeholder="Party name"></div>
+      </div>
+      <button class="btn-secondary" style="margin-bottom:8px" onclick="addDeposit()">+ Add Deposit</button>
+      <div id="depositList"></div>
+      <div id="depositTotal" style="font-size:13px;font-weight:700;color:var(--gold-dark);margin-top:4px"></div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveExtras()">Next: Paytm & Card →</button></div>`;
+  renderMobilList();renderDepositList();
+}
+function addMobil(){const a=gv('mobAmt'),n=gs('mobName');if(!a||!n){alert('Enter amount and product name');return;}mobilItems.push({amt:a,name:n,qty:gs('mobQty')});document.getElementById('mobAmt').value='';document.getElementById('mobName').value='';document.getElementById('mobQty').value='';renderMobilList();}
+function removeMobil(i){mobilItems.splice(i,1);renderMobilList();}
+function renderMobilList(){const el=document.getElementById('mobilList');if(!el)return;el.innerHTML=mobilItems.map((m,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">₹${fmt(m.amt)} = ${m.name}</div>${m.qty?`<div class="list-item-sub">Qty: ${m.qty}</div>`:''}</div><span class="list-item-amount">₹${fmt(m.amt)}</span><button class="rm-btn" onclick="removeMobil(${i})">✕</button></div>`).join('');const tot=mobilItems.reduce((a,m)=>a+m.amt,0);const te=document.getElementById('mobilTotal');if(te)te.textContent=mobilItems.length?`Mobil Total: ₹${fmt(tot)}`:'`';}
+function addDeposit(){const a=gv('depAmt'),n=gs('depName');if(!a||!n){alert('Enter amount and party name');return;}depositItems.push({amt:a,name:n});document.getElementById('depAmt').value='';document.getElementById('depName').value='';renderDepositList();}
+function removeDeposit(i){depositItems.splice(i,1);renderDepositList();}
+function renderDepositList(){const el=document.getElementById('depositList');if(!el)return;el.innerHTML=depositItems.map((c,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">₹${fmt(c.amt)} = ${c.name}</div></div><span class="list-item-amount">₹${fmt(c.amt)}</span><button class="rm-btn" onclick="removeDeposit(${i})">✕</button></div>`).join('');const tot=depositItems.reduce((a,c)=>a+c.amt,0);const te=document.getElementById('depositTotal');if(te)te.textContent=depositItems.length?`Deposit Total: ₹${fmt(tot)}`:'`';}
+function saveExtras(){draft.bf=gv('bfAmt');draft.mobilItems=[...mobilItems];draft.depositItems=[...depositItems];draft.mobilTotal=mobilItems.reduce((a,m)=>a+m.amt,0);draft.depositTotal=depositItems.reduce((a,c)=>a+c.amt,0);nextStep();}
+
+function renderPaytm(){
+  const nf=NOZZLES_MS.map(n=>`<div class="paytm-nozzle"><div style="font-size:12px;font-weight:600;color:var(--ink);margin-bottom:6px"><span class="tag tag-ms">${n}</span></div><div class="pn-grid"><div class="field"><div class="lbl">Timing</div><input type="text" id="pt_t_${n}" placeholder="09:00-18:00" value="${draft['pt_t_'+n]||''}"></div><div class="field"><div class="lbl">Card Transaction (₹)</div><input type="number" id="pt_c_${n}" placeholder="0" value="${draft['pt_c_'+n]||0}" step="0.01"></div></div></div>`).join('');
+  document.getElementById('stepContent').innerHTML=`
+    <div class="card"><div class="card-title">📱 Total Paytm Collection</div><div class="field"><div class="lbl">Total Paytm (₹)</div><input type="number" id="paytmTotal" value="${draft.paytmTotal||0}" step="0.01"></div></div>
+    <div class="card"><div class="card-title">💳 Nozzle-wise Card Transactions</div>${nf}</div>
+    <div class="btn-row"><button class="btn-primary" onclick="savePaytm()">Next: Expenses →</button></div>`;
+}
+function savePaytm(){draft.paytmTotal=gv('paytmTotal');draft.nozzlePaytm={};NOZZLES_MS.forEach(n=>{draft.nozzlePaytm[n]={time:gs('pt_t_'+n),card:gv('pt_c_'+n)};draft['pt_t_'+n]=gs('pt_t_'+n);draft['pt_c_'+n]=gv('pt_c_'+n);});nextStep();}
+
+function renderExpenses(){
+  document.getElementById('stepContent').innerHTML=`
+    <div class="card"><div class="card-title">🧾 Fixed Deductions</div>
+      <div class="grid2">
+        <div class="field"><div class="lbl">OTP (₹)</div><input type="number" id="otp" value="${draft.otp||0}" step="0.01"></div>
+        <div class="field"><div class="lbl">Account Transfer (₹)</div><input type="number" id="acctTr" value="${draft.acctTr||0}" step="0.01"></div>
+        <div class="field"><div class="lbl">HO / Bank (₹)</div><input type="number" id="hoBank" value="${draft.hoBank||0}" step="0.01"></div>
+      </div>
+    </div>
+    <div class="card"><div class="card-title"><span class="tag tag-exp">ADV</span> Advances &nbsp;<span style="font-size:11px;color:var(--ink-light);font-weight:400">Amount = Employee Name</span></div>
+      <div class="grid2" style="margin-bottom:8px">
+        <div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="advAmt" placeholder="0" step="0.01"></div>
+        <div class="field"><div class="lbl">Employee Name</div><input type="text" id="advName" placeholder="Name"></div>
+      </div>
+      <button class="btn-secondary" style="margin-bottom:8px" onclick="addAdv()">+ Add Advance</button>
+      <div id="advList"></div>
+    </div>
+    <div class="card"><div class="card-title">💳 Credit Sales &nbsp;<span style="font-size:11px;color:var(--ink-light);font-weight:400">Amount = Name / Note</span></div>
+      <div class="grid2" style="margin-bottom:8px">
+        <div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="csAmt" placeholder="0" step="0.01"></div>
+        <div class="field"><div class="lbl">Name / Note</div><input type="text" id="csName" placeholder="Note"></div>
+      </div>
+      <button class="btn-secondary" style="margin-bottom:8px" onclick="addCS()">+ Add Credit Sale</button>
+      <div id="csList"></div>
+    </div>
+    <div class="card"><div class="card-title"><span class="tag tag-exp">EXP</span> Pump Expense &nbsp;<span style="font-size:11px;color:var(--ink-light);font-weight:400">Amount = Category</span></div>
+      <div class="grid2" style="margin-bottom:8px">
+        <div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="expAmt" placeholder="0" step="0.01"></div>
+        <div class="field"><div class="lbl">Category</div><input type="text" id="expName" placeholder="e.g. Electricity"></div>
+      </div>
+      <button class="btn-secondary" style="margin-bottom:8px" onclick="addExp()">+ Add Pump Expense</button>
+      <div id="expList"></div>
+    </div>
+    <div class="card"><div class="card-title">🚛 Tanker Expense</div>
+      <div class="grid2">
+        <div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="tanker" value="${draft.tanker||0}" placeholder="0" step="0.01"></div>
+        <div class="field"><div class="lbl">Category / Note</div><input type="text" id="tankerName" value="${draft.tankerName||''}" placeholder="e.g. Loading charges"></div>
+      </div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveExpenses()">Generate Final Report →</button></div>`;
+  renderAdvList();renderCSList();renderExpList();
+}
+function addAdv(){const a=gv('advAmt'),n=gs('advName');if(!a||!n)return;advItems.push({amt:a,name:n});document.getElementById('advAmt').value='';document.getElementById('advName').value='';renderAdvList();}
+function removeAdv(i){advItems.splice(i,1);renderAdvList();}
+function renderAdvList(){const el=document.getElementById('advList');if(!el)return;el.innerHTML=advItems.map((x,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">₹${fmt(x.amt)} = ${x.name}</div></div><span class="list-item-amount">₹${fmt(x.amt)}</span><button class="rm-btn" onclick="removeAdv(${i})">✕</button></div>`).join('');}
+function addCS(){const a=gv('csAmt'),n=gs('csName');if(!a||!n)return;creditSaleItems.push({amt:a,name:n});document.getElementById('csAmt').value='';document.getElementById('csName').value='';renderCSList();}
+function removeCS(i){creditSaleItems.splice(i,1);renderCSList();}
+function renderCSList(){const el=document.getElementById('csList');if(!el)return;el.innerHTML=creditSaleItems.map((x,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">₹${fmt(x.amt)} = ${x.name}</div></div><span class="list-item-amount">₹${fmt(x.amt)}</span><button class="rm-btn" onclick="removeCS(${i})">✕</button></div>`).join('');}
+function addExp(){const a=gv('expAmt'),n=gs('expName');if(!a||!n)return;pumpExpItems.push({amt:a,name:n});document.getElementById('expAmt').value='';document.getElementById('expName').value='';renderExpList();}
+function removeExpItem(i){pumpExpItems.splice(i,1);renderExpList();}
+function renderExpList(){const el=document.getElementById('expList');if(!el)return;el.innerHTML=pumpExpItems.map((x,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">₹${fmt(x.amt)} = ${x.name}</div></div><span class="list-item-amount">₹${fmt(x.amt)}</span><button class="rm-btn" onclick="removeExpItem(${i})">✕</button></div>`).join('');}
+
+function saveExpenses(){
+  draft.otp=gv('otp');draft.tanker=gv('tanker');draft.tankerName=gs('tankerName');draft.pumpExpF=0;draft.acctTr=gv('acctTr');draft.hoBank=gv('hoBank');
+  draft.advItems=[...advItems];draft.creditSaleItems=[...creditSaleItems];draft.pumpExpItems=[...pumpExpItems];
+  draft.advTotal=advItems.reduce((a,x)=>a+x.amt,0);
+  draft.csTotal=creditSaleItems.reduce((a,x)=>a+x.amt,0);
+  draft.pumpExpTotal=pumpExpItems.reduce((a,x)=>a+x.amt,0);
+  draft.grossTotal=draft.fuelTotal+(draft.bf||0)+(draft.mobilTotal||0)+(draft.depositTotal||0);
+  const td=draft.paytmTotal+draft.otp+draft.tanker+draft.advTotal+draft.csTotal+draft.pumpExpTotal+draft.acctTr+draft.hoBank;
+  draft.totalDeductions=td;draft.finalCash=draft.grossTotal-td;draft.date=todayKey();
+  nextStep();
+}
+
+function renderReport(){
+  const d=draft;
+  let nHtml='';
+  [...NOZZLES_HSD,...NOZZLES_MS].forEach(n=>{const f=NOZZLES_HSD.includes(n)?'HSD':'MS',rsp=f==='HSD'?d.hsdRsp:d.msRsp,sale=d['sale_'+n]||0;nHtml+=`<tr><td>${n}</td><td><span class="tag ${f==='HSD'?'tag-hsd':'tag-ms'}">${f}</span></td><td>${(d['open_'+n]||0).toFixed(2)}</td><td>${(d['cl_'+n]||0).toFixed(2)}</td><td class="right">${fmtL(sale)}</td><td class="right">₹${fmt(sale*rsp)}</td></tr>`;});
+  const mHtml=(d.mobilItems||[]).map(m=>`<tr><td>${m.name}</td><td>${m.qty||'—'}</td><td class="right">₹${fmt(m.amt)}</td></tr>`).join('');
+  const depHtml=(d.depositItems||[]).map(c=>`<tr><td>${c.name}</td><td class="right">₹${fmt(c.amt)}</td></tr>`).join('');
+  const ptHtml=Object.entries(d.nozzlePaytm||{}).map(([n,v])=>`<tr><td>${n}</td><td>${v.time||'—'}</td><td class="right">₹${fmt(v.card)}</td></tr>`).join('');
+  const advHtml=(d.advItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('');
+  const csHtml=(d.creditSaleItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('');
+  const eHtml=(d.pumpExpItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('');
+
+  document.getElementById('stepContent').innerHTML=`
+  <div class="report">
+    <div class="report-header">
+      <div>
+        <div class="report-title">Mahakaleshwar Fuels</div>
+        <div class="report-sub">Indian Oil · Daily Reckoning Report · ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:10px;color:rgba(201,151,58,.5);text-transform:uppercase;letter-spacing:.06em">Final Cash</div>
+        <div style="font-family:var(--font);font-size:24px;font-weight:700;color:var(--gold)">₹${fmt(d.finalCash)}</div>
+      </div>
+    </div>
+    <div class="report-section">
+      <div class="report-section-title">Nozzle-wise Sales</div>
+      <div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Nozzle</th><th>Fuel</th><th>Opening</th><th>Closing</th><th>Sale (L)</th><th>Amount</th></tr></thead><tbody>${nHtml}</tbody></table></div>
+    </div>
+    <div class="report-section">
+      <div class="report-section-title">Testing & Net Sales</div>
+      <div class="summary-row"><span class="summary-lbl">HSD Gross</span><span class="summary-val">${fmtL(d.hsdGross)}</span></div>
+      <div class="summary-row"><span class="summary-lbl">HSD Testing</span><span class="summary-val" style="color:var(--red)">− ${fmtL(d.hsdTest)}</span></div>
+      <div class="summary-row"><span class="summary-lbl">HSD Net × ₹${d.hsdRsp}</span><span class="summary-val">${fmtL(d.hsdNet)} = ₹${fmt(d.hsdAmt)}</span></div>
+      <div style="height:6px"></div>
+      <div class="summary-row"><span class="summary-lbl">MS Gross</span><span class="summary-val">${fmtL(d.msGross)}</span></div>
+      <div class="summary-row"><span class="summary-lbl">MS Testing</span><span class="summary-val" style="color:var(--red)">− ${fmtL(d.msTest)}</span></div>
+      <div class="summary-row"><span class="summary-lbl">MS Net × ₹${d.msRsp}</span><span class="summary-val">${fmtL(d.msNet)} = ₹${fmt(d.msAmt)}</span></div>
+      <div class="summary-row"><span class="summary-lbl"><b>Fuel Sale Total</b></span><span class="summary-val" style="color:var(--green)">₹${fmt(d.fuelTotal)}</span></div>
+    </div>
+    ${mHtml?`<div class="report-section"><div class="report-section-title">Mobil Sales</div><table class="rtable"><thead><tr><th>Product</th><th>Qty</th><th>Amount</th></tr></thead><tbody>${mHtml}</tbody><tfoot><tr><td colspan="2" style="padding:6px;font-weight:700">Total Mobil</td><td class="right" style="font-weight:700">₹${fmt(d.mobilTotal)}</td></tr></tfoot></table></div>`:''}
+    ${depHtml?`<div class="report-section"><div class="report-section-title">Deposit</div><table class="rtable"><thead><tr><th>Party</th><th>Amount</th></tr></thead><tbody>${depHtml}</tbody><tfoot><tr><td style="padding:6px;font-weight:700">Total Deposit</td><td class="right" style="font-weight:700">₹${fmt(d.depositTotal)}</td></tr></tfoot></table></div>`:''}
+    <div class="report-section">
+      <div class="report-section-title">Gross Total</div>
+      <div class="summary-row"><span class="summary-lbl">Fuel Sale Total</span><span class="summary-val">₹${fmt(d.fuelTotal)}</span></div>
+      <div class="summary-row"><span class="summary-lbl">Balance Forward</span><span class="summary-val">₹${fmt(d.bf)}</span></div>
+      ${d.mobilTotal?`<div class="summary-row"><span class="summary-lbl">Mobil Sales</span><span class="summary-val">₹${fmt(d.mobilTotal)}</span></div>`:''}
+      ${d.depositTotal?`<div class="summary-row"><span class="summary-lbl">Deposit</span><span class="summary-val">₹${fmt(d.depositTotal)}</span></div>`:''}
+      <div class="summary-row"><span class="summary-lbl"><b>Gross Total</b></span><span class="summary-val" style="color:var(--green)">₹${fmt(d.grossTotal)}</span></div>
+    </div>
+    <div class="report-section">
+      <div class="report-section-title">Paytm & Card</div>
+      <div class="summary-row"><span class="summary-lbl">Total Paytm</span><span class="summary-val">₹${fmt(d.paytmTotal)}</span></div>
+      ${ptHtml?`<table class="rtable" style="margin-top:8px"><thead><tr><th>Nozzle</th><th>Timing</th><th>Card Amount</th></tr></thead><tbody>${ptHtml}</tbody></table>`:''}
+    </div>
+    <div class="report-section">
+      <div class="report-section-title">All Deductions</div>
+      <div class="summary-row"><span class="summary-lbl">Paytm</span><span class="summary-val">₹${fmt(d.paytmTotal)}</span></div>
+      <div class="summary-row"><span class="summary-lbl">OTP</span><span class="summary-val">₹${fmt(d.otp)}</span></div>
+      ${d.advTotal?`<div class="summary-row"><span class="summary-lbl">Advances</span><span class="summary-val">₹${fmt(d.advTotal)}</span></div>`:''}
+      ${d.csTotal?`<div class="summary-row"><span class="summary-lbl">Credit Sales</span><span class="summary-val">₹${fmt(d.csTotal)}</span></div>`:''}
+      ${d.pumpExpTotal?`<div class="summary-row"><span class="summary-lbl">Pump Expense</span><span class="summary-val">₹${fmt(d.pumpExpTotal)}</span></div>`:''}
+      ${d.tanker?`<div class="summary-row"><span class="summary-lbl">Tanker Expense${d.tankerName?' — '+d.tankerName:''}</span><span class="summary-val">₹${fmt(d.tanker)}</span></div>`:''}
+      <div class="summary-row"><span class="summary-lbl">Account Transfer</span><span class="summary-val">₹${fmt(d.acctTr)}</span></div>
+      <div class="summary-row"><span class="summary-lbl">HO / Bank</span><span class="summary-val">₹${fmt(d.hoBank)}</span></div>
+      <div class="summary-row"><span class="summary-lbl"><b>Total Deductions</b></span><span class="summary-val" style="color:var(--red)">₹${fmt(d.totalDeductions)}</span></div>
+    </div>
+    ${advHtml?`<div class="report-section"><div class="report-section-title">Advance Details</div><table class="rtable"><thead><tr><th>Employee</th><th>Amount</th></tr></thead><tbody>${advHtml}</tbody></table></div>`:''}
+    ${csHtml?`<div class="report-section"><div class="report-section-title">Credit Sales Details</div><table class="rtable"><thead><tr><th>Name / Note</th><th>Amount</th></tr></thead><tbody>${csHtml}</tbody></table></div>`:''}
+    ${eHtml?`<div class="report-section"><div class="report-section-title">Pump Expense Details</div><table class="rtable"><thead><tr><th>Category</th><th>Amount</th></tr></thead><tbody>${eHtml}</tbody></table></div>`:''}
+    <div class="final-cash-box">
+      <div><div class="fc-label">Final Cash</div><div style="font-size:11px;color:rgba(201,151,58,.5);margin-top:3px">→ Tomorrow's Balance Forward: ₹${fmt(d.finalCash)}</div></div>
+      <div class="fc-val">₹${fmt(d.finalCash)}</div>
+    </div>
+  </div>
+  <div class="btn-row" style="margin-top:14px">
+    <button class="btn-primary" id="saveBtn" onclick="confirmSave()">☁️ Save & Sync to All Devices</button>
+    <button class="btn-secondary" onclick="window.print()">🖨️ Print</button>
+    <button class="btn-secondary" onclick="goStep(0)">← Edit</button>
+  </div>
+  <div id="saveMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>`;
+}
+
+async function confirmSave(){
+  if(!confirm('Save today\'s record and sync to all devices?'))return;
+  const btn=document.getElementById('saveBtn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Saving…';
+  await saveDayRecord();btn.disabled=false;btn.innerHTML='☁️ Save & Sync to All Devices';
+}
+async function saveDayRecord(){
+  const d=draft,c=cloudData.cumulative;
+  c.totalLoan=(c.totalLoan||0);
+  c.totalAdv=(c.totalAdv||0)+(d.advTotal||0);
+  c.totalExp=(c.totalExp||0)+(d.pumpExpTotal||0)+(d.tanker||0);
+  c.totalMobil=(c.totalMobil||0)+(d.mobilTotal||0);
+  c.totalDeposit=(c.totalDeposit||0)+(d.depositTotal||0);
+  c.totalCS=(c.totalCS||0)+(d.csTotal||0);
+  (d.depositItems||[]).forEach(x=>{c.parties[x.name]=(c.parties[x.name]||0)+x.amt;});
+  (d.advItems||[]).forEach(x=>{c.employees[x.name]=(c.employees[x.name]||0)+x.amt;});
+  (d.pumpExpItems||[]).forEach(x=>{c.expCats[x.name]=(c.expCats[x.name]||0)+x.amt;});
+  cloudData.prevBF=d.finalCash;
+  const nc={};[...NOZZLES_HSD,...NOZZLES_MS].forEach(n=>{nc[n]=d['cl_'+n]||cloudData.prevClosing[n]||0;});
+  cloudData.prevClosing=nc;
+  const rec={...d,savedAt:new Date().toISOString()};
+  cloudData.records=cloudData.records.filter(r=>r.date!==d.date);
+  cloudData.records.unshift(rec);
+  await saveCloud();
+  document.getElementById('saveMsg').textContent='✅ Saved & synced! Tomorrow\'s BF = ₹'+fmt(d.finalCash);
+  draft={};mobilItems=[];depositItems=[];advItems=[];creditSaleItems=[];pumpExpItems=[];
+}
+
+// LOCK
+function resetLock(){pin='';updateDots();document.getElementById('lockScreen').style.display='';document.getElementById('ownerReport').style.display='none';document.getElementById('lockErr').textContent='';}
+function np(d){if(pin.length>=4)return;pin+=d;updateDots();if(pin.length===4)setTimeout(checkPin,150);}
+function npBack(){if(pin.length>0){pin=pin.slice(0,-1);updateDots();}}
+function npClr(){pin='';updateDots();}
+function updateDots(){for(let i=0;i<4;i++)document.getElementById('d'+i).classList.toggle('on',i<pin.length);}
+function checkPin(){
+  if(pin===PASSCODE){document.getElementById('lockScreen').style.display='none';document.getElementById('ownerReport').style.display='';renderOwnerReport();}
+  else{document.getElementById('lockErr').textContent='Wrong passcode. Try again.';pin='';updateDots();setTimeout(()=>{document.getElementById('lockErr').textContent='';},2500);}
+}
+
+function renderOwnerReport(){
+  const c=cloudData.cumulative,r=cloudData.records,latest=r[0];
+  const partyRows=Object.entries(c.parties||{}).map(([n,a])=>`<tr><td>${n}</td><td class="right">₹${fmt(a)}</td></tr>`).join('')||'<tr><td colspan="2" style="color:var(--ink-light);font-size:12px;padding:8px">No deposit parties yet</td></tr>';
+  const empRows=Object.entries(c.employees||{}).map(([n,a])=>`<tr><td>${n}</td><td class="right">₹${fmt(a)}</td></tr>`).join('')||'<tr><td colspan="2" style="color:var(--ink-light);font-size:12px;padding:8px">No advances yet</td></tr>';
+  const expRows=Object.entries(c.expCats||{}).map(([n,a])=>`<tr><td>${n}</td><td class="right">₹${fmt(a)}</td></tr>`).join('')||'<tr><td colspan="2" style="color:var(--ink-light);font-size:12px;padding:8px">No expenses yet</td></tr>';
+  const latestBlock=latest?`
+    <div class="card"><div class="card-title">📅 Latest Day — ${latest.date}</div>
+      <div class="cum-grid">
+        <div class="cum-card"><div class="cum-label">Fuel Sales</div><div class="cum-val">₹${fmt(latest.fuelTotal)}</div></div>
+        <div class="cum-card"><div class="cum-label">Gross Total</div><div class="cum-val">₹${fmt(latest.grossTotal)}</div></div>
+        <div class="cum-card"><div class="cum-label">Deductions</div><div class="cum-val" style="color:var(--red)">₹${fmt(latest.totalDeductions)}</div></div>
+        <div class="cum-card"><div class="cum-label">Final Cash</div><div class="cum-val" style="color:var(--green)">₹${fmt(latest.finalCash)}</div></div>
+      </div>
+    </div>`:'<div class="alert-warn">No records saved yet.</div>';
+  document.getElementById('ownerReport').innerHTML=`
+    <div class="alert-success">🔓 Owner view unlocked — Mahakaleshwar Fuels</div>
+    ${latestBlock}
+    <div class="card"><div class="card-title">📊 Cumulative Totals</div>
+      <div class="cum-grid">
+        <div class="cum-card"><div class="cum-label">Total Mobil</div><div class="cum-val">₹${fmt(c.totalMobil)}</div></div>
+        <div class="cum-card"><div class="cum-label">Total Advances</div><div class="cum-val">₹${fmt(c.totalAdv)}</div></div>
+        <div class="cum-card"><div class="cum-label">Total Credit Sales</div><div class="cum-val">₹${fmt(c.totalCS||0)}</div></div>
+        <div class="cum-card"><div class="cum-label">Total Expenses</div><div class="cum-val">₹${fmt(c.totalExp)}</div></div>
+        <div class="cum-card"><div class="cum-label">Total Deposit</div><div class="cum-val">₹${fmt(c.totalDeposit||0)}</div></div>
+      </div>
+    </div>
+    <div class="card"><div class="card-title">🏪 Party-wise Deposit</div><table class="rtable"><thead><tr><th>Party</th><th>Total</th></tr></thead><tbody>${partyRows}</tbody></table></div>
+    <div class="card"><div class="card-title">👷 Employee Advances</div><table class="rtable"><thead><tr><th>Employee</th><th>Total</th></tr></thead><tbody>${empRows}</tbody></table></div>
+    <div class="card"><div class="card-title">🧾 Expense Breakdown</div><table class="rtable"><thead><tr><th>Category</th><th>Total</th></tr></thead><tbody>${expRows}</tbody></table></div>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="resetLock()">🔒 Lock & Exit</button>
+      <button class="btn-secondary" onclick="refreshOwner()" style="color:var(--blue)">🔄 Refresh</button>
+      <button class="btn-secondary" onclick="resetAll()" style="color:var(--red)">⚠️ Reset All Data</button>
+    </div>`;
+}
+async function refreshOwner(){document.getElementById('ownerReport').innerHTML='<div style="text-align:center;padding:30px"><span class="spinner"></span> Refreshing…</div>';await loadCloud();renderOwnerReport();}
+async function resetAll(){if(!confirm('Delete ALL records permanently?'))return;if(!confirm('Cannot undo. Confirm?'))return;cloudData={records:[],prevClosing:{},prevBF:0,cumulative:{totalLoan:0,totalAdv:0,totalExp:0,totalMobil:0,totalDeposit:0,totalCS:0,parties:{},employees:{},expCats:{}}};await saveCloud();alert('All data deleted.');resetLock();}
+
+// ── CALENDAR ──────────────────────────────────────────────────────────────────
+let calYear=new Date().getFullYear(), calMonth=new Date().getMonth();
+
+function renderHistory(){
+  if(cloudData.records.length){
+    const latest=cloudData.records[0].date;
+    calYear=parseInt(latest.slice(0,4));
+    calMonth=parseInt(latest.slice(5,7))-1;
+  }
+  renderCalendar();
+}
+
+function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCalendar();}
+function calNext(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderCalendar();}
+
+function renderCalendar(){
+  const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('calMonthLabel').textContent=`${MONTHS[calMonth]} ${calYear}`;
+
+  const monthStr=`${calYear}-${String(calMonth+1).padStart(2,'0')}`;
+  const recMap={};
+  cloudData.records.forEach(r=>{if(r.date.startsWith(monthStr))recMap[r.date]=r;});
+
+  const monthRecs=Object.values(recMap);
+  const mFuel=monthRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
+  const mCash=monthRecs.reduce((a,r)=>a+(r.finalCash||0),0);
+  const mDays=monthRecs.length;
+  document.getElementById('calMonthSummary').innerHTML=mDays?`
+    <div class="cum-card"><div class="cum-label">Days recorded</div><div class="cum-val" style="font-size:18px">${mDays}</div></div>
+    <div class="cum-card"><div class="cum-label">Month fuel sales</div><div class="cum-val" style="font-size:16px">₹${fmt(mFuel)}</div></div>
+    <div class="cum-card"><div class="cum-label">Total final cash</div><div class="cum-val" style="font-size:16px;color:var(--green)">₹${fmt(mCash)}</div></div>
+  `:`<div style="font-size:12px;color:var(--ink-light);padding:4px 0">No records this month.</div>`;
+
+  const firstDay=new Date(calYear,calMonth,1).getDay();
+  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  const today=new Date().toISOString().slice(0,10);
+
+  let cells='';
+  for(let i=0;i<firstDay;i++) cells+=`<div style="min-height:64px"></div>`;
+
+  for(let d=1;d<=daysInMonth;d++){
+    const dateStr=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const rec=recMap[dateStr];
+    const isToday=dateStr===today;
+    const hasRec=!!rec;
+
+    let cellStyle=`min-height:64px;border-radius:var(--r);border:1px solid var(--cream-border);padding:5px 6px;cursor:${hasRec?'pointer':'default'};transition:all .15s;position:relative;`;
+    if(isToday) cellStyle+=`border-color:var(--gold);background:rgba(201,151,58,.08);`;
+    else if(hasRec) cellStyle+=`background:var(--cream);border-color:#C9B88A;`;
+    else cellStyle+=`background:transparent;opacity:.45;`;
+
+    const dayNum=`<div style="font-size:11px;font-weight:700;color:${isToday?'var(--gold)':hasRec?'var(--ink)':'var(--ink-light)'};margin-bottom:3px">${d}</div>`;
+    let inner='';
+    if(hasRec){
+      inner+=`<div style="font-size:9px;font-weight:700;color:var(--green);line-height:1.4">₹${shortFmt(rec.finalCash)}</div>`;
+      inner+=`<div style="font-size:9px;color:var(--ink-light);line-height:1.4">${(rec.hsdNet||0).toFixed(0)}+${(rec.msNet||0).toFixed(0)}L</div>`;
+      inner+=`<div style="position:absolute;top:5px;right:6px;width:6px;height:6px;border-radius:50%;background:var(--green)"></div>`;
+    }
+    cells+=`<div style="${cellStyle}" onclick="${hasRec?`showHistDetailByDate('${dateStr}')`:''}" title="${hasRec?'₹'+fmt(rec.finalCash)+' — tap to view':'No record'}">${dayNum}${inner}</div>`;
+  }
+  document.getElementById('calGrid').innerHTML=cells;
+  document.getElementById('historyDetail').style.display='none';
+}
+
+function shortFmt(n){n=Number(n||0);if(n>=100000)return(n/100000).toFixed(1)+'L';if(n>=1000)return(n/1000).toFixed(1)+'K';return n.toFixed(0);}
+
+function showHistDetailByDate(dateStr){
+  const d=cloudData.records.find(r=>r.date===dateStr);
+  if(!d)return;
+  showHistDetail(cloudData.records.indexOf(d));
+}
+
+function showHistDetail(i){
+  const d=cloudData.records[i];if(!d)return;
+  let nHtml='';
+  [...NOZZLES_HSD,...NOZZLES_MS].forEach(n=>{
+    const f=NOZZLES_HSD.includes(n)?'HSD':'MS',rsp=f==='HSD'?d.hsdRsp:d.msRsp,sale=d['sale_'+n]||0;
+    if(sale>0)nHtml+=`<tr><td>${n}</td><td><span class="tag ${f==='HSD'?'tag-hsd':'tag-ms'}">${f}</span></td><td class="right">${fmtL(sale)}</td><td class="right">₹${fmt(sale*rsp)}</td></tr>`;
+  });
+  const mHtml=(d.mobilItems||[]).map(m=>`<tr><td>${m.name}</td><td class="right">₹${fmt(m.amt)}</td></tr>`).join('');
+  const depHtml=(d.depositItems||[]).map(c=>`<tr><td>${c.name}</td><td class="right">₹${fmt(c.amt)}</td></tr>`).join('');
+  const advHtml=(d.advItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('');
+  const csHtml=(d.creditSaleItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('');
+  const eHtml=(d.pumpExpItems||[]).map(x=>`<tr><td>${x.name}${x.person?' ('+x.person+')':''}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('');
+  const ptHtml=Object.entries(d.nozzlePaytm||{}).filter(([,v])=>v.card>0).map(([n,v])=>`<tr><td>${n}</td><td>${v.time||'—'}</td><td class="right">₹${fmt(v.card)}</td></tr>`).join('');
+
+  const det=document.getElementById('historyDetail');
+  det.style.display='';
+  setTimeout(()=>det.scrollIntoView({behavior:'smooth',block:'start'}),100);
+  det.innerHTML=`
+    <div class="report">
+      <div class="report-header">
+        <div><div class="report-title">Mahakaleshwar Fuels</div>
+        <div class="report-sub">${new Date(d.date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}</div></div>
+        <div style="text-align:right"><div style="font-size:10px;color:rgba(201,151,58,.5)">Final Cash</div><div style="font-family:var(--font);font-size:22px;font-weight:700;color:var(--gold)">₹${fmt(d.finalCash)}</div></div>
+      </div>
+      <div class="report-section"><div class="report-section-title">Nozzle Sales</div>
+        <div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Nozzle</th><th>Fuel</th><th>Sale (L)</th><th>Amount</th></tr></thead><tbody>${nHtml||'<tr><td colspan="4" style="color:var(--ink-light);font-size:12px;padding:8px">No data</td></tr>'}</tbody></table></div>
+      </div>
+      <div class="report-section">
+        <div class="summary-row"><span class="summary-lbl">HSD Net × ₹${d.hsdRsp}</span><span class="summary-val">${fmtL(d.hsdNet)} = ₹${fmt(d.hsdAmt)}</span></div>
+        <div class="summary-row"><span class="summary-lbl">MS Net × ₹${d.msRsp}</span><span class="summary-val">${fmtL(d.msNet)} = ₹${fmt(d.msAmt)}</span></div>
+        <div class="summary-row"><span class="summary-lbl">Fuel Total</span><span class="summary-val">₹${fmt(d.fuelTotal)}</span></div>
+        <div class="summary-row"><span class="summary-lbl">Balance Forward</span><span class="summary-val">₹${fmt(d.bf)}</span></div>
+        ${d.mobilTotal?`<div class="summary-row"><span class="summary-lbl">Mobil Sales</span><span class="summary-val">₹${fmt(d.mobilTotal)}</span></div>`:''}
+        ${d.depositTotal?`<div class="summary-row"><span class="summary-lbl">Deposit</span><span class="summary-val">₹${fmt(d.depositTotal)}</span></div>`:''}
+        <div class="summary-row"><span class="summary-lbl">Gross Total</span><span class="summary-val">₹${fmt(d.grossTotal)}</span></div>
+        <div class="summary-row"><span class="summary-lbl">Total Deductions</span><span class="summary-val" style="color:var(--red)">₹${fmt(d.totalDeductions)}</span></div>
+        <div class="summary-row"><span class="summary-lbl"><b>Final Cash</b></span><span class="summary-val" style="color:var(--green);font-size:15px">₹${fmt(d.finalCash)}</span></div>
+      </div>
+      ${ptHtml?`<div class="report-section"><div class="report-section-title">Paytm & Card</div><div class="summary-row"><span class="summary-lbl">Total Paytm</span><span class="summary-val">₹${fmt(d.paytmTotal)}</span></div><table class="rtable" style="margin-top:8px"><thead><tr><th>Nozzle</th><th>Timing</th><th>Card</th></tr></thead><tbody>${ptHtml}</tbody></table></div>`:''}
+      ${mHtml?`<div class="report-section"><div class="report-section-title">Mobil Sales</div><table class="rtable"><thead><tr><th>Product</th><th>Amount</th></tr></thead><tbody>${mHtml}</tbody></table></div>`:''}
+      ${depHtml?`<div class="report-section"><div class="report-section-title">Deposit</div><table class="rtable"><thead><tr><th>Party</th><th>Amount</th></tr></thead><tbody>${depHtml}</tbody></table></div>`:''}
+      ${advHtml?`<div class="report-section"><div class="report-section-title">Advances</div><table class="rtable"><thead><tr><th>Employee</th><th>Amount</th></tr></thead><tbody>${advHtml}</tbody></table></div>`:''}
+      ${csHtml?`<div class="report-section"><div class="report-section-title">Credit Sales</div><table class="rtable"><thead><tr><th>Name</th><th>Amount</th></tr></thead><tbody>${csHtml}</tbody></table></div>`:''}
+      ${eHtml?`<div class="report-section"><div class="report-section-title">Pump Expenses</div><table class="rtable"><thead><tr><th>Category</th><th>Amount</th></tr></thead><tbody>${eHtml}</tbody></table></div>`:''}
+    </div>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="document.getElementById('historyDetail').style.display='none';window.scrollTo({top:0,behavior:'smooth'})">← Back to Calendar</button>
+      <button class="btn-secondary" onclick="window.print()">🖨️ Print</button>
+    </div>`;
+}
+
+function createParticles(){}
+
+function initBackground(){
+  const canvas=document.getElementById('bgCanvas');
+  const ctx=canvas.getContext('2d');
+  let W,H;
+  let mouse={x:-1,y:-1};
+  let offscreen=null,offCtx=null;
+
+  function resize(){
+    W=canvas.width=window.innerWidth;
+    H=canvas.height=window.innerHeight;
+    buildMarble();
+  }
+
+  window.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;});
+  window.addEventListener('touchmove',e=>{if(e.touches[0]){mouse.x=e.touches[0].clientX;mouse.y=e.touches[0].clientY;}},{passive:true});
+
+  // Smooth noise helper
+  function hash(x,y){let h=(x*374761393+y*668265263);h=(h^(h>>13))*1274126177;return(h^(h>>16))/(2**32)+0.5;}
+  function smoothNoise(x,y){
+    const ix=Math.floor(x),iy=Math.floor(y);
+    const fx=x-ix,fy=y-iy;
+    const ux=fx*fx*(3-2*fx),uy=fy*fy*(3-2*fy);
+    const a=hash(ix,iy),b=hash(ix+1,iy),c=hash(ix,iy+1),d=hash(ix+1,iy+1);
+    return a+(b-a)*ux+(c-a)*uy+(d-a+a-b-c+b)*ux*uy;
+  }
+  function fbm(x,y,oct){
+    let v=0,amp=1,freq=1,max=0;
+    for(let i=0;i<oct;i++){v+=smoothNoise(x*freq,y*freq)*amp;max+=amp;amp*=0.5;freq*=2.1;}
+    return v/max;
+  }
+
+  // Veins — bezier paths with gold gradient
+  let veins=[];
+  function generateVeins(){
+    veins=[];
+    const count=18+Math.floor(Math.random()*10);
+    for(let i=0;i<count;i++){
+      const startX=Math.random()*W;
+      const startY=Math.random()*H;
+      const angle=Math.random()*Math.PI*2;
+      const length=120+Math.random()*400;
+      const pts=[];
+      let cx=startX,cy=startY;
+      const segs=4+Math.floor(Math.random()*6);
+      for(let s=0;s<segs;s++){
+        const a=angle+(Math.random()-.5)*1.2;
+        const l=length/segs;
+        cx+=Math.cos(a)*l+(Math.random()-.5)*60;
+        cy+=Math.sin(a)*l+(Math.random()-.5)*60;
+        pts.push({x:cx,y:cy});
+      }
+      veins.push({
+        start:{x:startX,y:startY},
+        pts,
+        width:0.4+Math.random()*2.2,
+        bright:Math.random()>.6,
+        alpha:0.25+Math.random()*0.55,
+        color:Math.random()>.5?'gold':'white',
+        branches:Math.random()>.5?generateBranches(startX,startY,angle,length):[]
+      });
+    }
+  }
+
+  function generateBranches(ox,oy,angle,len){
+    const br=[];
+    const count=1+Math.floor(Math.random()*3);
+    for(let i=0;i<count;i++){
+      const a=angle+(Math.random()-.5)*1.8;
+      const l=len*(.2+Math.random()*.4);
+      const pts=[];
+      let cx=ox,cy=oy;
+      const segs=2+Math.floor(Math.random()*3);
+      for(let s=0;s<segs;s++){
+        cx+=Math.cos(a+(Math.random()-.5)*.8)*(l/segs)+(Math.random()-.5)*30;
+        cy+=Math.sin(a+(Math.random()-.5)*.8)*(l/segs)+(Math.random()-.5)*30;
+        pts.push({x:cx,y:cy});
+      }
+      br.push({start:{x:ox,y:oy},pts,width:0.2+Math.random()*0.8,alpha:0.15+Math.random()*0.3});
+    }
+    return br;
+  }
+
+  function drawVein(v,mx,my,glow){
+    if(!v.pts.length)return;
+    // Mouse proximity boost
+    const dx=v.start.x-mx, dy=v.start.y-my;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    const boost=Math.max(0,1-dist/350)*0.6;
+
+    const alpha=Math.min(1,v.alpha+boost*(glow?0.5:0.2));
+    const lw=v.width+(boost*3);
+
+    // Gold vein gradient along path
+    const lastPt=v.pts[v.pts.length-1];
+    const grad=ctx.createLinearGradient(v.start.x,v.start.y,lastPt.x,lastPt.y);
+    if(v.color==='gold'){
+      grad.addColorStop(0,`rgba(80,50,0,${alpha*0.4})`);
+      grad.addColorStop(0.3,`rgba(201,151,58,${alpha})`);
+      grad.addColorStop(0.5,`rgba(255,215,100,${Math.min(1,alpha+boost*0.4)})`);
+      grad.addColorStop(0.7,`rgba(201,151,58,${alpha})`);
+      grad.addColorStop(1,`rgba(80,50,0,${alpha*0.4})`);
+    } else {
+      grad.addColorStop(0,`rgba(180,170,160,${alpha*0.3})`);
+      grad.addColorStop(0.5,`rgba(220,210,200,${alpha})`);
+      grad.addColorStop(1,`rgba(180,170,160,${alpha*0.3})`);
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(v.start.x,v.start.y);
+    v.pts.forEach(p=>ctx.lineTo(p.x,p.y));
+    ctx.strokeStyle=grad;
+    ctx.lineWidth=lw;
+    ctx.lineCap='round';
+    ctx.lineJoin='round';
+    ctx.stroke();
+
+    // Inner bright core on gold veins near mouse
+    if(v.color==='gold'&&boost>0.1){
+      ctx.beginPath();
+      ctx.moveTo(v.start.x,v.start.y);
+      v.pts.forEach(p=>ctx.lineTo(p.x,p.y));
+      ctx.strokeStyle=`rgba(255,240,160,${boost*0.6})`;
+      ctx.lineWidth=lw*0.3;
+      ctx.stroke();
+    }
+
+    // Branches
+    v.branches.forEach(b=>{
+      if(!b.pts.length)return;
+      ctx.beginPath();
+      ctx.moveTo(b.start.x,b.start.y);
+      b.pts.forEach(p=>ctx.lineTo(p.x,p.y));
+      ctx.strokeStyle=`rgba(201,151,58,${b.alpha+boost*0.2})`;
+      ctx.lineWidth=b.width+boost;
+      ctx.stroke();
+    });
+  }
+
+  // Marble base using fbm noise rendered to offscreen
+  function buildMarble(){
+    offscreen=document.createElement('canvas');
+    offscreen.width=W; offscreen.height=H;
+    offCtx=offscreen.getContext('2d');
+    const img=offCtx.createImageData(W,H);
+    const scaleX=3.5/W, scaleY=3.5/H;
+    for(let y=0;y<H;y++){
+      for(let x=0;x<W;x++){
+        // Marble pattern: sine of fbm-warped coordinates
+        const wx=x*scaleX, wy=y*scaleY;
+        const warpX=fbm(wx+0.1,wy,4)*2.2;
+        const warpY=fbm(wx,wy+0.8,4)*2.2;
+        const marble=Math.sin((wx+warpX)*3.5+(wy+warpY)*2.2)*0.5+0.5;
+        const n2=fbm(wx*1.3+warpX*.5,wy*1.3+warpY*.5,3);
+        const v=Math.pow(marble,1.4)*0.7+n2*0.3;
+        // Very dark — near black with subtle variation
+        const base=Math.floor(v*28);
+        const i=(y*W+x)*4;
+        img.data[i]=base+2;
+        img.data[i+1]=base+1;
+        img.data[i+2]=base+3;
+        img.data[i+3]=255;
+      }
+    }
+    offCtx.putImageData(img,0,0);
+    generateVeins();
+  }
+
+  function draw(){
+    if(!offscreen){requestAnimationFrame(draw);return;}
+    // Draw marble base
+    ctx.drawImage(offscreen,0,0);
+
+    const mx=mouse.x,my=mouse.y;
+
+    // Mouse proximity glow on marble surface
+    if(mx>0){
+      const g=ctx.createRadialGradient(mx,my,0,mx,my,300);
+      g.addColorStop(0,'rgba(201,151,58,0.07)');
+      g.addColorStop(0.5,'rgba(120,80,10,0.03)');
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g;
+      ctx.fillRect(0,0,W,H);
+    }
+
+    // Draw all veins
+    veins.forEach(v=>drawVein(v,mx,my,true));
+
+    // Subtle overall sheen — diagonal light sweep
+    const t=Date.now()*0.00008;
+    const sweepX=(Math.sin(t)*0.5+0.5)*W*1.5-W*0.25;
+    const sh=ctx.createLinearGradient(sweepX-400,0,sweepX+400,H);
+    sh.addColorStop(0,'rgba(0,0,0,0)');
+    sh.addColorStop(0.45,'rgba(0,0,0,0)');
+    sh.addColorStop(0.5,'rgba(255,240,200,0.025)');
+    sh.addColorStop(0.55,'rgba(0,0,0,0)');
+    sh.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=sh;
+    ctx.fillRect(0,0,W,H);
+
+    // Cursor — gold orb
+    if(mx>0){
+      ctx.beginPath();ctx.arc(mx,my,4,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,215,80,0.9)';ctx.fill();
+      ctx.beginPath();ctx.arc(mx,my,14,0,Math.PI*2);
+      ctx.strokeStyle='rgba(201,151,58,0.4)';ctx.lineWidth=0.7;ctx.stroke();
+      ctx.beginPath();ctx.arc(mx,my,30,0,Math.PI*2);
+      ctx.strokeStyle='rgba(201,151,58,0.15)';ctx.lineWidth=0.5;ctx.stroke();
+    }
+
+    // Heavy vignette — marble edge darkening
+    const v=ctx.createRadialGradient(W/2,H/2,H*0.25,W/2,H/2,H*0.85);
+    v.addColorStop(0,'rgba(0,0,0,0)');
+    v.addColorStop(1,'rgba(0,0,0,0.88)');
+    ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
+
+    requestAnimationFrame(draw);
+  }
+
+  resize();
+  window.addEventListener('resize',()=>{resize();});
+  draw();
+}
+async function init(){await loadCloud();renderStep();initBackground();}
+init();
+</script>
+</body>
+</html>
