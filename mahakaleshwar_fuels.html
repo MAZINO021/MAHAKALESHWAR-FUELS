@@ -384,13 +384,65 @@ let currentStep=0,currentModule=null;
 let attSelectedDate=todayKey0();
 
 // ── CLOUD ─────────────────────────────────────────────────────────────────────
-const hasCloud=typeof window.storage!=='undefined';
-async function cloudGet(k){if(hasCloud){try{const r=await window.storage.get(k,true);return r?JSON.parse(r.value):null;}catch(e){return null;}}else{try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}}}
-async function cloudSet(k,v){const s=JSON.stringify(v);if(hasCloud){try{await window.storage.set(k,s,true);return true;}catch(e){return false;}}else{try{localStorage.setItem(k,s);return true;}catch(e){return false;}}}
+// ── FIREBASE CONFIG ───────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyCI02w04vtWmsP3HB64QOVrtIqHeQye3K8",
+  authDomain: "mahakaleshwar-fuels.firebaseapp.com",
+  databaseURL: "https://mahakaleshwar-fuels-default-rtdb.firebaseio.com",
+  projectId: "mahakaleshwar-fuels",
+  storageBucket: "mahakaleshwar-fuels.firebasestorage.app",
+  messagingSenderId: "209292362520",
+  appId: "1:209292362520:web:036d8fec63ac86d94c546d"
+};
+
+// Load Firebase from CDN
+let firebaseDB = null;
+async function initFirebase(){
+  return new Promise((resolve)=>{
+    if(firebaseDB){resolve();return;}
+    const s1=document.createElement('script');
+    s1.src='https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js';
+    s1.onload=()=>{
+      const s2=document.createElement('script');
+      s2.src='https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js';
+      s2.onload=()=>{
+        if(!firebase.apps.length)firebase.initializeApp(firebaseConfig);
+        firebaseDB=firebase.database();
+        resolve();
+      };
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s1);
+  });
+}
+
+// ── CLOUD FUNCTIONS (Firebase) ────────────────────────────────────────────────
+async function cloudGet(k){
+  try{
+    await initFirebase();
+    const snap=await firebaseDB.ref('mf/'+k).get();
+    return snap.exists()?snap.val():null;
+  }catch(e){
+    try{return JSON.parse(localStorage.getItem(k));}catch(e2){return null;}
+  }
+}
+
+async function cloudSet(k,v){
+  try{
+    await initFirebase();
+    await firebaseDB.ref('mf/'+k).set(v);
+    localStorage.setItem(k,JSON.stringify(v));
+    return true;
+  }catch(e){
+    try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e2){return false;}
+  }
+}
+
 function syncStatus(s,m){const dot=document.getElementById('syncDot'),txt=document.getElementById('syncMsg');if(dot)dot.className='sync-dot '+s;if(txt)txt.textContent=m;}
 async function loadCloud(){
-  syncStatus('loading','Loading…');
+  syncStatus('loading','Connecting to Firebase…');
   try{
+    await initFirebase();
     const main=await cloudGet(STORE_KEY);
     if(main){cloudData.records=main.records||[];cloudData.prevClosing=main.prevClosing||{};cloudData.prevBF=main.prevBF||0;}
     const cum=await cloudGet(STORE_KEY_CUM);if(cum)cloudData.cumulative={...cloudData.cumulative,...cum};
@@ -402,14 +454,15 @@ async function loadCloud(){
     const port=await cloudGet(STORE_KEY_PORTFOLIO);if(port)portfolioData=port;
     const test=await cloudGet(STORE_KEY_TESTING);if(test)testingData=test;
     const depO=await cloudGet(DEPOSIT_KEY);if(depO)ownerDeposits=depO;
-    syncStatus('ok',hasCloud?'Cloud sync active':'Local storage');
-  }catch(e){syncStatus('err','Connection error');}
+    syncStatus('ok','☁️ Firebase connected');
+  }catch(e){syncStatus('err','Connection error — using local');}
 }
+
 async function saveCloud(){
-  syncStatus('loading','Saving…');
+  syncStatus('loading','Saving to Firebase…');
   const ok=await cloudSet(STORE_KEY,{records:cloudData.records,prevClosing:cloudData.prevClosing,prevBF:cloudData.prevBF})
           &&await cloudSet(STORE_KEY_CUM,cloudData.cumulative);
-  if(ok){syncStatus('ok','Saved ✓');setTimeout(()=>syncStatus('ok',hasCloud?'Cloud sync active':'Local storage'),2500);}
+  if(ok){syncStatus('ok','☁️ Saved to Firebase ✓');setTimeout(()=>syncStatus('ok','☁️ Firebase connected'),2500);}
   else syncStatus('err','Save failed');
 }
 
