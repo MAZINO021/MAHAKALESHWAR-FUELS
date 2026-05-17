@@ -2222,13 +2222,39 @@ function initThreeScene(canvas,container){
     }
 
     const clock=new THREE.Clock();
-    let t=0;
+    let t=0,mouseX=0,mouseY=0,targetX=0,targetY=0;
+
+    // Mouse / touch follow
+    window.addEventListener('mousemove',e=>{
+      mouseX=(e.clientX/window.innerWidth-0.5)*2;
+      mouseY=(e.clientY/window.innerHeight-0.5)*-1;
+    });
+    document.addEventListener('touchmove',e=>{
+      if(e.touches[0]){
+        mouseX=(e.touches[0].clientX/window.innerWidth-0.5)*2;
+        mouseY=(e.touches[0].clientY/window.innerHeight-0.5)*-1;
+      }
+    },{passive:true});
+
     (function animate(){
       requestAnimationFrame(animate);
       const d=clock.getDelta();t+=d;
       if(mixer)mixer.update(d);
-      model.rotation.y=Math.sin(t*0.25)*0.2;
-      model.position.y=0.1+Math.sin(t*0.7)*0.05;
+
+      // Smooth mouse follow (lerp)
+      targetX+=(mouseX-targetX)*0.05;
+      targetY+=(mouseY-targetY)*0.05;
+
+      // Head/body follows mouse
+      model.rotation.y=targetX*0.4+Math.sin(t*0.3)*0.08;
+      model.rotation.x=targetY*0.15;
+
+      // Breathing — gentle up/down bob
+      model.position.y=0.1+Math.sin(t*1.0)*0.07;
+
+      // Slight sway side to side
+      model.rotation.z=Math.sin(t*0.4)*0.025;
+
       if(controls)controls.update();
       renderer.render(scene,camera);
     })();
