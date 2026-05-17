@@ -330,21 +330,89 @@ input:focus{border-color:var(--ioc-red);box-shadow:0 0 0 2px rgba(208,30,30,.1);
 
 <!-- QUERY -->
 <div id="queryView" style="display:none">
-  <div class="card">
-    <div class="card-title">💬 Ask Anything</div>
-    <div style="font-size:12px;color:var(--ink-light);margin-bottom:12px;line-height:1.6">Examples: <span style="color:var(--ioc-red);font-style:italic">"total expense this month"</span> · <span style="color:var(--ioc-red);font-style:italic">"advance given to Ramu"</span> · <span style="color:var(--ioc-red);font-style:italic">"credit sales last week"</span></div>
-    <div style="display:flex;gap:8px;align-items:flex-end">
-      <div style="flex:1"><input type="text" id="nlQuery" placeholder="Type your question…" onkeydown="if(event.key==='Enter')askQuery()"></div>
-      <button class="btn-primary" onclick="askQuery()" id="askBtn">Ask →</button>
+  <!-- BELLA (Owner only) -->
+  <div id="bellaView" style="display:none">
+    <style>
+      @keyframes bellaSparkle{0%,100%{opacity:0;transform:scale(0) rotate(0deg)}50%{opacity:1;transform:scale(1) rotate(180deg)}}
+      @keyframes bellaGlow{0%,100%{opacity:0.3;transform:scale(1)}50%{opacity:0.7;transform:scale(1.05)}}
+      @keyframes floatUp{0%{transform:translateY(0);opacity:0}20%{opacity:1}100%{transform:translateY(-70px);opacity:0}}
+      @keyframes bellaStatusPulse{0%,100%{opacity:0.8}50%{opacity:1}}
+      .b-sp1{animation:bellaSparkle 2.2s ease-in-out infinite}
+      .b-sp2{animation:bellaSparkle 2.2s ease-in-out infinite .7s}
+      .b-sp3{animation:bellaSparkle 2.2s ease-in-out infinite 1.4s}
+      .b-sp4{animation:bellaSparkle 2.2s ease-in-out infinite 1.8s}
+      .b-glow{animation:bellaGlow 2.5s ease-in-out infinite}
+      .b-float{animation:floatUp 2.5s ease-out infinite}
+      .b-status{animation:bellaStatusPulse 2s ease-in-out infinite}
+      #bella3dContainer{width:100%;height:320px;position:relative;border-radius:var(--rl);overflow:hidden;background:linear-gradient(160deg,#080220,#120630,#081020)}
+      #bella3dCanvas{width:100%;height:100%;display:block}
+    </style>
+
+    <div style="position:relative;margin-bottom:16px">
+      <!-- Sparkles around the 3D viewer -->
+      <div class="b-sp1" style="position:absolute;top:8%;left:6%;font-size:18px;color:#D4B84A;z-index:10;pointer-events:none">✦</div>
+      <div class="b-sp2" style="position:absolute;top:15%;right:5%;font-size:14px;color:#88EE88;z-index:10;pointer-events:none">✦</div>
+      <div class="b-sp3" style="position:absolute;top:55%;left:4%;font-size:10px;color:#D4B84A;z-index:10;pointer-events:none">✧</div>
+      <div class="b-sp4" style="position:absolute;top:40%;right:4%;font-size:12px;color:#88EE88;z-index:10;pointer-events:none">✦</div>
+      <div class="b-float" style="position:absolute;bottom:15%;left:12%;font-size:12px;color:rgba(180,220,100,0.8);z-index:10;pointer-events:none">🌸</div>
+      <div class="b-float" style="position:absolute;bottom:20%;right:14%;font-size:10px;color:rgba(212,184,74,0.8);z-index:10;pointer-events:none;animation-delay:.9s">✨</div>
+      <div class="b-float" style="position:absolute;bottom:10%;left:45%;font-size:9px;color:rgba(100,200,100,0.8);z-index:10;pointer-events:none;animation-delay:1.8s">💫</div>
+
+      <!-- Background glow -->
+      <div class="b-glow" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(80,160,80,0.1),transparent 70%);pointer-events:none;z-index:0"></div>
+
+      <!-- 3D Canvas -->
+      <div id="bella3dContainer">
+        <canvas id="bella3dCanvas"></canvas>
+        <div id="bella3dLoading" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:rgba(255,255,255,0.8)">
+          <div style="font-size:32px;margin-bottom:10px">🌸</div>
+          <div style="font-size:13px;font-weight:600">Loading Bella...</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:4px">3D model initializing</div>
+        </div>
+      </div>
+
+      <!-- Name + status below -->
+      <div style="background:linear-gradient(160deg,#080220,#120630);padding:12px 16px;border-radius:0 0 var(--rl) var(--rl);text-align:center;border-top:1px solid rgba(120,200,120,0.1)">
+        <div style="font-family:var(--font);font-size:20px;font-weight:700;background:linear-gradient(90deg,#D4B84A,#88EE88,#D4B84A);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">🌸 Bella</div>
+        <div style="font-size:11px;color:rgba(180,220,180,0.6);margin-top:2px">Your personal AI assistant</div>
+        <div id="bellaStatus" class="b-status" style="font-size:12px;color:rgba(212,184,74,0.9);margin-top:5px;font-style:italic;font-weight:500">Ready to help you, Aditya! ✨</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:6px">👆 Drag to rotate • Scroll to zoom</div>
+      </div>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
-      <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('total expense this month')">Expenses this month</button>
-      <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('total advance this month')">Advances this month</button>
-      <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('fuel sales this month')">Fuel this month</button>
-      <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('final cash all time')">All Final Cash</button>
+
+    <div class="card">
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <div style="flex:1"><input type="text" id="nlQuery" placeholder="Ask Bella anything… expenses, profit, advances…" onkeydown="if(event.key==='Enter')askQuery()" style="border-color:rgba(100,200,100,0.3)"></div>
+        <button onclick="askQuery()" id="askBtn" style="padding:10px 18px;background:linear-gradient(135deg,#1A6614,#3DB52E);color:#fff;border:none;border-radius:var(--r);font-family:var(--ui);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Ask 🌸</button>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('total expense this month')">Expenses this month</button>
+        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('total advance this month')">Advances this month</button>
+        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('fuel sales this month')">Fuel this month</button>
+        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('profit this month')">Profit this month</button>
+        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('summary')">Full Summary</button>
+      </div>
     </div>
+    <div id="chatHistory"></div>
   </div>
-  <div id="chatHistory"></div>
+  <!-- MF ASSISTANT (Manager only) -->
+  <div id="mfAssistantView" style="display:none">
+    <div class="card">
+      <div class="card-title">💬 MF Assistant</div>
+      <div style="font-size:12px;color:var(--ink-light);margin-bottom:12px;line-height:1.6">Examples: <span style="color:var(--ioc-red);font-style:italic">"total expense this month"</span> · <span style="color:var(--ioc-red);font-style:italic">"advance given to Ramu"</span> · <span style="color:var(--ioc-red);font-style:italic">"credit sales last week"</span></div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <div style="flex:1"><input type="text" id="nlQueryMgr" placeholder="Type your question…" onkeydown="if(event.key==='Enter')askQueryMgr()"></div>
+        <button class="btn-primary" onclick="askQueryMgr()" id="askBtnMgr">Ask →</button>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAskMgr('total expense this month')">Expenses this month</button>
+        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAskMgr('total advance this month')">Advances this month</button>
+        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAskMgr('fuel sales this month')">Fuel this month</button>
+        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAskMgr('final cash all time')">All Final Cash</button>
+      </div>
+    </div>
+    <div id="chatHistoryMgr"></div>
+  </div>
 </div>
 
 </div><!-- end mainApp -->
@@ -512,7 +580,7 @@ function setupModeBar(){
   const bar=document.getElementById('modeBar');
   bar.innerHTML=currentRole==='manager'
     ?'<button class="mbtn" id="btnManager" onclick="setMode(\'manager\')">📋 Modules</button><button class="mbtn" id="btnHistory" onclick="setMode(\'history\')">📅 History</button><button class="mbtn" id="btnQuery" onclick="setMode(\'query\')">💬 Query</button>'
-    :'<button class="mbtn" id="btnOwner" onclick="setMode(\'owner\')">👑 Owner Report</button><button class="mbtn" id="btnHistory" onclick="setMode(\'history\')">📅 History</button><button class="mbtn" id="btnQuery" onclick="setMode(\'query\')">💬 Query</button>';
+    :'<button class="mbtn" id="btnOwner" onclick="setMode(\'owner\')">👑 Owner Report</button><button class="mbtn" id="btnHistory" onclick="setMode(\'history\')">📅 History</button><button class="mbtn" id="btnQuery" onclick="setMode(\'query\')">🌸 Bella</button>';
 }
 function setMode(m){
   ['managerView','ownerView','historyView','queryView'].forEach(v=>document.getElementById(v).style.display='none');
@@ -1105,6 +1173,10 @@ function showCreditParty(name){
 // ── OWNER REPORT ──────────────────────────────────────────────────────────────
 function renderOwnerReport(){
   document.getElementById('ownerReport').innerHTML=`
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div style="font-size:12px;color:var(--ink-light)" id="ownerDataStatus">Records loaded: ${cloudData.records.length}</div>
+    <button onclick="refreshOwnerData()" style="padding:6px 12px;background:var(--ioc-navy-light);border:1px solid var(--ioc-border);border-radius:var(--r);font-size:11px;font-weight:600;color:var(--ioc-navy);cursor:pointer;font-family:var(--ui)">🔄 Refresh Data</button>
+  </div>
   <div id="ownerModuleSelect" class="card">
     <div class="card-title">👑 Owner Dashboard — Select Module</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" id="ownerModuleGrid">
@@ -1168,16 +1240,6 @@ function ownerBackBtn(){
 }
 
 // keep showOwnerTab for internal tab switching inside reports
-function showOwnerTab(tab){
-  ['profit','portfolio','credit','staff'].forEach(t=>{
-    const b=document.getElementById('own_'+t);if(b)b.className='mbtn'+(t===tab?' active':'');
-  });
-  if(tab==='profit')renderOwnerProfit();
-  else if(tab==='portfolio')renderOwnerPortfolio();
-  else if(tab==='credit')renderOwnerCredit();
-  else if(tab==='staff')renderOwnerStaff();
-}
-
 // ── OPTION 1: REPORTS (sub-tabs: Profit / Portfolio / Credit / Staff) ─────────
 function renderOwnerReports(){
   document.getElementById('ownerTabContent').innerHTML=`
@@ -2049,28 +2111,378 @@ function showHistDetail(i){
 }
 
 // ── QUERY ─────────────────────────────────────────────────────────────────────
-function initQuery(){document.getElementById('chatHistory').innerHTML='';}
-function quickAsk(q){document.getElementById('nlQuery').value=q;askQuery();}
-async function askQuery(){
-  const q=document.getElementById('nlQuery').value.trim();if(!q)return;
-  const btn=document.getElementById('askBtn');btn.disabled=true;btn.textContent='…';
-  addChatBubble('user',q);document.getElementById('nlQuery').value='';
-  const today=new Date().toISOString().slice(0,10);const ms2=new Date();ms2.setDate(1);const mStart=ms2.toISOString().slice(0,10);
-  let data=`Today:${today} MonthStart:${mStart} HSD_margin:₹${HSD_MARGIN}/L MS_margin:₹${MS_MARGIN}/L\n\nRECORDS:\n`;
-  cloudData.records.slice(0,60).forEach(r=>{data+=`DATE:${r.date} Fuel:₹${(r.fuelTotal||0).toFixed(0)} Cash:₹${(r.finalCash||0).toFixed(0)} HSD:${(r.hsdNet||0).toFixed(1)}L MS:${(r.msNet||0).toFixed(1)}L Profit:₹${(r.netProfit||0).toFixed(0)}\n`;if((r.pumpExpItems||[]).length)data+=` Exp:${r.pumpExpItems.map(x=>`${x.name}=₹${x.amt}`).join(',')}\n`;if((r.advItems||[]).length)data+=` Adv:${r.advItems.map(x=>`${x.name}=₹${x.amt}`).join(',')}\n`;});
+function initQuery(){
+  if(currentRole==='owner'){
+    document.getElementById('bellaView').style.display='';
+    document.getElementById('mfAssistantView').style.display='none';
+    document.getElementById('chatHistory').innerHTML='';
+    initBellaAnimation();
+  } else {
+    document.getElementById('bellaView').style.display='none';
+    document.getElementById('mfAssistantView').style.display='';
+    document.getElementById('chatHistoryMgr').innerHTML='';
+  }
+}
+
+// ── BELLA ANIME CHARACTER ANIMATION ──────────────────────────────────────────
+function initBellaAnimation(){
+  const input=document.getElementById('nlQuery');
+  if(input){
+    input.addEventListener('focus',()=>{
+      const s=document.getElementById('bellaStatus');
+      if(s)s.textContent='Tell me what you want to know! 💭';
+    });
+    input.addEventListener('blur',()=>{
+      const s=document.getElementById('bellaStatus');
+      if(s)s.textContent='Ready to help you, Aditya! ✨';
+    });
+  }
+  // Load Three.js and GLB model
+  loadBella3D();
+}
+
+function loadBella3D(){
+  const canvas=document.getElementById('bella3dCanvas');
+  const container=document.getElementById('bella3dContainer');
+  if(!canvas||!container)return;
+
+  function loadScript(src){
+    return new Promise((resolve,reject)=>{
+      const s=document.createElement('script');
+      s.src=src;s.onload=resolve;s.onerror=reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  // Load sequentially — OrbitControls needs THREE to exist first
+  loadScript('https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js')
+  .then(()=>loadScript('https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/GLTFLoader.js'))
+  .then(()=>loadScript('https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js'))
+  .then(()=>{
+    // Small delay to ensure all globals registered
+    setTimeout(()=>initThreeScene(canvas,container),100);
+  })
+  .catch(e=>{
+    console.error('Three.js load error',e);
+    const el=document.getElementById('bella3dLoading');
+    if(el)el.innerHTML='<div style="font-size:28px">🌸</div><div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:8px">Could not load 3D engine</div>';
+  });
+}
+
+function initThreeScene(canvas,container){
+  const W=container.clientWidth||300;
+  const H=container.clientHeight||320;
+
+  const scene=new THREE.Scene();
+  const camera=new THREE.PerspectiveCamera(45,W/H,0.1,100);
+  camera.position.set(0,1.2,3.5);
+
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+  renderer.setSize(W,H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.setClearColor(0x000000,0);
+  try{renderer.outputEncoding=THREE.sRGBEncoding;}catch(e){}
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0xffffff,0.7));
+  const dir=new THREE.DirectionalLight(0xffffff,1.2);dir.position.set(2,4,3);scene.add(dir);
+  const fill=new THREE.DirectionalLight(0x88ff88,0.3);fill.position.set(-2,1,-2);scene.add(fill);
+  const rim=new THREE.DirectionalLight(0xD4B84A,0.4);rim.position.set(0,2,-3);scene.add(rim);
+
+  // OrbitControls
+  let controls=null;
   try{
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:`You are assistant for Mahakaleshwar Fuels petrol pump. Answer with exact numbers. Use ₹. Plain text.\n\n${data}`,messages:[{role:'user',content:q}]})});
-    const res=await resp.json();addChatBubble('ai',res.content?.[0]?.text||'No answer.');
-  }catch(e){addChatBubble('ai','Connection error.');}
+    controls=new THREE.OrbitControls(camera,renderer.domElement);
+    controls.enableDamping=true;controls.dampingFactor=0.08;
+    controls.minDistance=1.5;controls.maxDistance=7;
+    controls.maxPolarAngle=Math.PI*0.85;
+    controls.target.set(0,0.8,0);controls.update();
+  }catch(e){console.warn('OrbitControls failed, continuing without:',e);}
+
+  // Load GLB
+  const loader=new THREE.GLTFLoader();
+  loader.load('misato_katsuragi.glb',(gltf)=>{
+    const model=gltf.scene;
+    const box=new THREE.Box3().setFromObject(model);
+    const center=box.getCenter(new THREE.Vector3());
+    const size=box.getSize(new THREE.Vector3());
+    const scale=2.4/Math.max(size.x,size.y,size.z);
+    model.scale.setScalar(scale);
+    model.position.sub(center.multiplyScalar(scale));
+    model.position.y+=0.1;
+    scene.add(model);
+
+    const el=document.getElementById('bella3dLoading');
+    if(el)el.style.display='none';
+
+    let mixer=null;
+    if(gltf.animations&&gltf.animations.length>0){
+      mixer=new THREE.AnimationMixer(model);
+      mixer.clipAction(gltf.animations[0]).play();
+    }
+
+    const clock=new THREE.Clock();
+    let t=0;
+    (function animate(){
+      requestAnimationFrame(animate);
+      const d=clock.getDelta();t+=d;
+      if(mixer)mixer.update(d);
+      model.rotation.y=Math.sin(t*0.25)*0.2;
+      model.position.y=0.1+Math.sin(t*0.7)*0.05;
+      if(controls)controls.update();
+      renderer.render(scene,camera);
+    })();
+
+    window.addEventListener('resize',()=>{
+      const W2=container.clientWidth;
+      camera.aspect=W2/H;camera.updateProjectionMatrix();
+      renderer.setSize(W2,H);
+    });
+
+  },(xhr)=>{
+    if(xhr.total){
+      const pct=Math.round(xhr.loaded/xhr.total*100);
+      const el=document.getElementById('bella3dLoading');
+      if(el)el.innerHTML=`<div style="font-size:26px;margin-bottom:8px">🌸</div><div style="font-size:13px;font-weight:600;color:#fff">Loading Bella... ${pct}%</div><div style="width:130px;height:5px;background:rgba(255,255,255,0.15);border-radius:3px;margin:10px auto 0"><div style="width:${pct}%;height:100%;background:linear-gradient(90deg,#3DB52E,#D4B84A);border-radius:3px;transition:width .3s"></div></div>`;
+    }
+  },(err)=>{
+    console.error('GLB error:',err);
+    const el=document.getElementById('bella3dLoading');
+    if(el)el.innerHTML='<div style="font-size:30px">🌸</div><div style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:10px">Make sure misato_katsuragi.glb<br>is uploaded to your GitHub repo</div>';
+  });
+}
+// ── MANAGER QUERY (MF Assistant — no profit info) ─────────────────────────────
+function quickAsk(q){document.getElementById('nlQuery').value=q;askQuery();}
+function quickAskMgr(q){document.getElementById('nlQueryMgr').value=q;askQueryMgr();}
+async function askQueryMgr(){
+  const q=document.getElementById('nlQueryMgr').value.trim();if(!q)return;
+  const btn=document.getElementById('askBtnMgr');btn.disabled=true;btn.textContent='…';
+  addMgrBubble('user',q);document.getElementById('nlQueryMgr').value='';
+  // Manager version of local answer — no profit data
+  addMgrBubble('ai',mgrLocalAnswer(q));
   btn.disabled=false;btn.textContent='Ask →';
 }
+
+function mgrLocalAnswer(q){
+  q=q.toLowerCase();
+  const today=new Date().toISOString().slice(0,10);
+  const ms2=new Date();ms2.setDate(1);const mStart=ms2.toISOString().slice(0,10);
+  const monthRecs=cloudData.records.filter(r=>r.date>=mStart&&r.date<=today);
+  const allRecs=cloudData.records;
+
+  if(q.includes('final cash')||q.includes('cash')||q.includes('balance')){
+    if(q.includes('today')){const r=allRecs.find(r=>r.date===today);return r?`Today (${today}) Final Cash: ₹${fmt(r.finalCash)}`:`No record for today yet.`;}
+    const lines=allRecs.slice(0,7).map(r=>`${r.date}: ₹${fmt(r.finalCash)}`).join('\n');
+    return`Recent Final Cash:\n${lines}`;
+  }
+  if(q.includes('expense')||q.includes('kharch')){
+    const allCats=[...new Set(allRecs.flatMap(r=>(r.pumpExpItems||[]).map(x=>x.name.toLowerCase())))];
+    const mentionedCat=allCats.find(c=>q.includes(c.toLowerCase())||c.toLowerCase().split(' ').some(part=>part.length>2&&q.includes(part)));
+    if(mentionedCat){
+      const entries=allRecs.flatMap(r=>(r.pumpExpItems||[]).filter(x=>x.name.toLowerCase()===mentionedCat).map(x=>({date:r.date,name:x.name,amt:x.amt})));
+      const total=entries.reduce((a,x)=>a+x.amt,0);
+      return`${entries[0]?.name||mentionedCat.toUpperCase()} — Total: ₹${fmt(total)}\n${entries.map(x=>`${x.date}: ₹${fmt(x.amt)}`).join('\n')}`;
+    }
+    const total=monthRecs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+    const breakdown=monthRecs.flatMap(r=>(r.pumpExpItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
+    return`This month expenses: ₹${fmt(total)}\n${breakdown.join('\n')||'None'}`;
+  }
+  if(q.includes('advance')||q.includes('adv')){
+    const allNames=[...new Set(allRecs.flatMap(r=>(r.advItems||[]).map(x=>x.name.toLowerCase())))];
+    const mentionedName=allNames.find(n=>q.includes(n.toLowerCase())||n.toLowerCase().split(' ').some(part=>part.length>2&&q.includes(part)));
+    if(mentionedName){
+      const entries=allRecs.flatMap(r=>(r.advItems||[]).filter(x=>x.name.toLowerCase()===mentionedName).map(x=>({date:r.date,name:x.name,amt:x.amt})));
+      const total=entries.reduce((a,x)=>a+x.amt,0);
+      return`${entries[0]?.name||mentionedName.toUpperCase()} — Total Advance: ₹${fmt(total)}\n${entries.map(x=>`${x.date}: ₹${fmt(x.amt)}`).join('\n')}`;
+    }
+    const total=monthRecs.reduce((a,r)=>a+(r.advTotal||0),0);
+    const breakdown=monthRecs.flatMap(r=>(r.advItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
+    return`This month advances: ₹${fmt(total)}\n${breakdown.join('\n')||'None'}`;
+  }
+  if(q.includes('fuel')||q.includes('hsd')||q.includes('ms')||q.includes('diesel')||q.includes('petrol')){
+    const hsd=monthRecs.reduce((a,r)=>a+(r.hsdNet||0),0);
+    const ms=monthRecs.reduce((a,r)=>a+(r.msNet||0),0);
+    const amt=monthRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
+    return`This month:\nHSD: ${hsd.toFixed(1)} L\nMS: ${ms.toFixed(1)} L\nAmount: ₹${fmt(amt)}`;
+  }
+  if(q.includes('paytm')){
+    const total=monthRecs.reduce((a,r)=>a+(r.paytmTotal||0),0);
+    return`This month Paytm: ₹${fmt(total)}`;
+  }
+  if(q.includes('summary')||q.includes('total')){
+    const hsd=monthRecs.reduce((a,r)=>a+(r.hsdNet||0),0);
+    const ms=monthRecs.reduce((a,r)=>a+(r.msNet||0),0);
+    const fuel=monthRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
+    const cash=monthRecs.reduce((a,r)=>a+(r.finalCash||0),0);
+    const exp=monthRecs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+    const adv=monthRecs.reduce((a,r)=>a+(r.advTotal||0),0);
+    return`This month (${monthRecs.length} days):\nHSD: ${hsd.toFixed(1)}L | MS: ${ms.toFixed(1)}L\nFuel: ₹${fmt(fuel)}\nCash: ₹${fmt(cash)}\nExpenses: ₹${fmt(exp)}\nAdvances: ₹${fmt(adv)}`;
+  }
+  return`MF Assistant here! I can help with:\n• Final cash & balance\n• Fuel sales (HSD/MS)\n• Expenses & advances\n• Paytm totals\n\nTry: "expense this month" or "bhoju advance"`;
+}
+
+function addMgrBubble(role,text){
+  const hist=document.getElementById('chatHistoryMgr');if(!hist)return;
+  const div=document.createElement('div');
+  div.style.cssText=`margin-bottom:12px;display:flex;flex-direction:column;align-items:${role==='user'?'flex-end':'flex-start'}`;
+  const lbl=document.createElement('div');
+  lbl.style.cssText='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-light);margin-bottom:4px;padding:0 4px';
+  lbl.textContent=role==='user'?'You':'⛽ MF Assistant';
+  const bbl=document.createElement('div');
+  bbl.style.cssText=role==='user'
+    ?'background:linear-gradient(135deg,var(--ioc-red-dark),var(--ioc-red));color:#fff;padding:11px 15px;border-radius:14px 14px 2px 14px;font-size:13px;max-width:85%;font-family:var(--ui);line-height:1.5'
+    :'background:#fff;border:1px solid var(--ioc-border);color:var(--ink);padding:13px 16px;border-radius:14px 14px 14px 2px;font-size:13px;max-width:92%;font-family:var(--ui);line-height:1.7;white-space:pre-wrap';
+  bbl.textContent=text;div.appendChild(lbl);div.appendChild(bbl);hist.appendChild(div);
+  div.scrollIntoView({behavior:'smooth',block:'end'});
+}
+async function askQuery(){
+  const q=document.getElementById('nlQuery').value.trim();if(!q)return;
+  const btn=document.getElementById('askBtn');btn.disabled=true;btn.textContent='Bella is thinking…';
+  addChatBubble('user',q);document.getElementById('nlQuery').value='';
+  const today=new Date().toISOString().slice(0,10);
+  const ms2=new Date();ms2.setDate(1);const mStart=ms2.toISOString().slice(0,10);
+  let data=`Today:${today} MonthStart:${mStart} HSD_margin:₹${HSD_MARGIN}/L MS_margin:₹${MS_MARGIN}/L\n\nRECORDS:\n`;
+  cloudData.records.slice(0,60).forEach(r=>{
+    data+=`DATE:${r.date} Fuel:₹${(r.fuelTotal||0).toFixed(0)} Cash:₹${(r.finalCash||0).toFixed(0)} HSD:${(r.hsdNet||0).toFixed(1)}L MS:${(r.msNet||0).toFixed(1)}L Profit:₹${(r.netProfit||0).toFixed(0)}\n`;
+    if((r.pumpExpItems||[]).length)data+=` Exp:${r.pumpExpItems.map(x=>`${x.name}=₹${x.amt}`).join(',')}\n`;
+    if((r.advItems||[]).length)data+=` Adv:${r.advItems.map(x=>`${x.name}=₹${x.amt}`).join(',')}\n`;
+  });
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',max_tokens:1000,
+        system:`You are Bella, a smart assistant for Mahakaleshwar Fuels petrol pump. Answer with exact numbers from data. Use ₹. Plain text only.\n\n${data}`,
+        messages:[{role:'user',content:q}]
+      })
+    });
+    if(!resp.ok)throw new Error('api');
+    const res=await resp.json();
+    addChatBubble('ai',res.content?.[0]?.text||bellaLocalAnswer(q));
+  }catch(e){
+    // Bella answers from local data — no connection needed
+    addChatBubble('ai',bellaLocalAnswer(q));
+  }
+  btn.disabled=false;btn.textContent='Ask →';
+}
+
+function bellaLocalAnswer(q){
+  q=q.toLowerCase();
+  const today=new Date().toISOString().slice(0,10);
+  const ms2=new Date();ms2.setDate(1);const mStart=ms2.toISOString().slice(0,10);
+  const monthRecs=cloudData.records.filter(r=>r.date>=mStart&&r.date<=today);
+  const allRecs=cloudData.records;
+
+  // Final cash / balance forward
+  if(q.includes('final cash')||q.includes('cash in hand')||q.includes('balance forward')){
+    if(q.includes('today')||q.includes('aaj')){
+      const r=allRecs.find(r=>r.date===today);
+      return r?`Today (${today}) Final Cash: ₹${fmt(r.finalCash)}`:`No record for today yet.`;
+    }
+    const lines=allRecs.slice(0,10).map(r=>`${r.date}: ₹${fmt(r.finalCash)}`).join('\n');
+    return`Recent Final Cash:\n${lines}`;
+  }
+
+  // Expense
+  if(q.includes('expense')||q.includes('kharch')){
+    // Check if a specific category is mentioned
+    const allCats=[...new Set(allRecs.flatMap(r=>(r.pumpExpItems||[]).map(x=>x.name.toLowerCase())))];
+    const mentionedCat=allCats.find(c=>q.includes(c.toLowerCase())||c.toLowerCase().split(' ').some(part=>part.length>2&&q.includes(part)));
+    if(mentionedCat){
+      const entries=allRecs.flatMap(r=>(r.pumpExpItems||[]).filter(x=>x.name.toLowerCase()===mentionedCat).map(x=>({date:r.date,name:x.name,amt:x.amt})));
+      const total=entries.reduce((a,x)=>a+x.amt,0);
+      const lines=entries.map(x=>`${x.date}: ₹${fmt(x.amt)}`).join('\n');
+      return`${entries[0]?.name||mentionedCat.toUpperCase()} — Total: ₹${fmt(total)}\n\nEntries:\n${lines||'No entries found'}`;
+    }
+    const total=monthRecs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+    const breakdown=monthRecs.flatMap(r=>(r.pumpExpItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
+    return`This month total expenses: ₹${fmt(total)}\n\nBreakdown:\n${breakdown.join('\n')||'No expenses recorded'}`;
+  }
+
+  // Advance
+  if(q.includes('advance')||q.includes('adv')){
+    // Check if a specific name is mentioned
+    const allNames=[...new Set(allRecs.flatMap(r=>(r.advItems||[]).map(x=>x.name.toLowerCase())))];
+    const mentionedName=allNames.find(n=>q.includes(n.toLowerCase())||n.toLowerCase().split(' ').some(part=>part.length>2&&q.includes(part)));
+    if(mentionedName){
+      // Filter by that specific person
+      const entries=allRecs.flatMap(r=>(r.advItems||[]).filter(x=>x.name.toLowerCase()===mentionedName).map(x=>({date:r.date,name:x.name,amt:x.amt})));
+      const total=entries.reduce((a,x)=>a+x.amt,0);
+      const lines=entries.map(x=>`${x.date}: ₹${fmt(x.amt)}`).join('\n');
+      return`${entries[0]?.name||mentionedName.toUpperCase()} — Total Advance: ₹${fmt(total)}\n\nEntries:\n${lines||'No advance found'}`;
+    }
+    // No name mentioned — show this month total
+    const total=monthRecs.reduce((a,r)=>a+(r.advTotal||0),0);
+    const breakdown=monthRecs.flatMap(r=>(r.advItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
+    return`This month total advances: ₹${fmt(total)}\n\nBreakdown:\n${breakdown.join('\n')||'No advances recorded'}`;
+  }
+
+  // Fuel / HSD / MS / diesel / petrol
+  if(q.includes('fuel')||q.includes('hsd')||q.includes('ms')||q.includes('diesel')||q.includes('petrol')){
+    const hsd=monthRecs.reduce((a,r)=>a+(r.hsdNet||0),0);
+    const ms=monthRecs.reduce((a,r)=>a+(r.msNet||0),0);
+    const amt=monthRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
+    return`This month fuel sales:\nHSD: ${hsd.toFixed(1)} L\nMS: ${ms.toFixed(1)} L\nTotal Amount: ₹${fmt(amt)}`;
+  }
+
+  // Profit
+  if(q.includes('profit')||q.includes('munafa')){
+    const p=monthRecs.reduce((a,r)=>a+(r.netProfit||0),0);
+    return`This month estimated profit: ₹${fmt(p)}`;
+  }
+
+  // Paytm
+  if(q.includes('paytm')){
+    const total=monthRecs.reduce((a,r)=>a+(r.paytmTotal||0),0);
+    return`This month Paytm total: ₹${fmt(total)}`;
+  }
+
+  // Credit
+  if(q.includes('credit')){
+    // Check if specific party name mentioned
+    const allParties=[...new Set(creditData.map(t=>t.party.toLowerCase()))];
+    const mentionedParty=allParties.find(p=>q.includes(p.toLowerCase())||p.toLowerCase().split(' ').some(part=>part.length>2&&q.includes(part)));
+    if(mentionedParty){
+      const txns=creditData.filter(t=>t.party.toLowerCase()===mentionedParty);
+      const total=txns.filter(t=>t.type==='credit').reduce((a,t)=>a+t.amt,0);
+      const paid=txns.filter(t=>t.type==='payment').reduce((a,t)=>a+t.amt,0);
+      return`${txns[0]?.party||mentionedParty.toUpperCase()}:\nTotal Credit: ₹${fmt(total)}\nTotal Paid: ₹${fmt(paid)}\nBalance Due: ₹${fmt(total-paid)}`;
+    }
+    const total=monthRecs.reduce((a,r)=>a+(r.csTotal||0),0);
+    return`This month credit sales: ₹${fmt(total)}`;
+  }
+
+  // Summary / all
+  if(q.includes('summary')||q.includes('all')||q.includes('total')){
+    const hsd=monthRecs.reduce((a,r)=>a+(r.hsdNet||0),0);
+    const ms=monthRecs.reduce((a,r)=>a+(r.msNet||0),0);
+    const fuel=monthRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
+    const cash=monthRecs.reduce((a,r)=>a+(r.finalCash||0),0);
+    const exp=monthRecs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+    const adv=monthRecs.reduce((a,r)=>a+(r.advTotal||0),0);
+    const profit=monthRecs.reduce((a,r)=>a+(r.netProfit||0),0);
+    return`This month summary (${monthRecs.length} days):\nHSD Sold: ${hsd.toFixed(1)} L\nMS Sold: ${ms.toFixed(1)} L\nFuel Sales: ₹${fmt(fuel)}\nTotal Cash: ₹${fmt(cash)}\nExpenses: ₹${fmt(exp)}\nAdvances: ₹${fmt(adv)}\nEst. Profit: ₹${fmt(profit)}`;
+  }
+
+  return`Hi! I'm Bella 🌸 I can answer questions about:\n• Final cash & balance forward\n• Fuel sales (HSD/MS)\n• Expenses & advances\n• Paytm & credit sales\n• Monthly profit\n\nTry: "total expense this month" or "fuel sales this month"`;
+}
+
 function addChatBubble(role,text){
   const hist=document.getElementById('chatHistory');
-  const div=document.createElement('div');div.style.cssText=`margin-bottom:12px;display:flex;flex-direction:column;align-items:${role==='user'?'flex-end':'flex-start'}`;
-  const lbl=document.createElement('div');lbl.style.cssText='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-light);margin-bottom:4px;padding:0 4px';lbl.textContent=role==='user'?'You':'MF Assistant';
+  const div=document.createElement('div');
+  div.style.cssText=`margin-bottom:12px;display:flex;flex-direction:column;align-items:${role==='user'?'flex-end':'flex-start'}`;
+  const lbl=document.createElement('div');
+  lbl.style.cssText='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-light);margin-bottom:4px;padding:0 4px';
+  lbl.textContent=role==='user'?'You':'🌸 Bella';
   const bbl=document.createElement('div');
-  bbl.style.cssText=role==='user'?'background:linear-gradient(135deg,var(--ioc-red-dark),var(--ioc-red));color:#fff;padding:11px 15px;border-radius:14px 14px 2px 14px;font-size:13px;max-width:85%;font-family:var(--ui);line-height:1.5':'background:#fff;border:1px solid var(--ioc-border);color:var(--ink);padding:13px 16px;border-radius:14px 14px 14px 2px;font-size:13px;max-width:92%;font-family:var(--ui);line-height:1.7;white-space:pre-wrap';
-  bbl.textContent=text;div.appendChild(lbl);div.appendChild(bbl);hist.appendChild(div);div.scrollIntoView({behavior:'smooth',block:'end'});
+  bbl.style.cssText=role==='user'
+    ?'background:linear-gradient(135deg,var(--ioc-red-dark),var(--ioc-red));color:#fff;padding:11px 15px;border-radius:14px 14px 2px 14px;font-size:13px;max-width:85%;font-family:var(--ui);line-height:1.5'
+    :'background:linear-gradient(135deg,#fff,#FFF5F5);border:1px solid rgba(208,30,30,.15);color:var(--ink);padding:13px 16px;border-radius:14px 14px 14px 2px;font-size:13px;max-width:92%;font-family:var(--ui);line-height:1.7;white-space:pre-wrap';
+  bbl.textContent=text;
+  div.appendChild(lbl);div.appendChild(bbl);
+  hist.appendChild(div);
+  div.scrollIntoView({behavior:'smooth',block:'end'});
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
@@ -2081,7 +2493,8 @@ function renderOwnerFullRecords(from,to,section){
   if(from!==undefined)fullRecFilter.from=from;
   if(to!==undefined)fullRecFilter.to=to;
   if(section!==undefined)fullRecFilter.section=section;
-  const f=fullRecFilter.from,t2=fullRecFilter.to||todayKey0(),sec=fullRecFilter.section||'sales';
+  // Default: show ALL records (no date filter)
+  const f=fullRecFilter.from,t2=fullRecFilter.to,sec=fullRecFilter.section||'sales';
 
   const sectionBtns=[
     {id:'sales',icon:'⛽',label:'Daily Sales'},
@@ -2122,8 +2535,12 @@ function renderOwnerFullRecords(from,to,section){
 
 // ── SALES RECORDS ─────────────────────────────────────────────────────────────
 function buildSalesRecords(f,t2){
-  const recs=(f?cloudData.records.filter(r=>r.date>=f&&r.date<=t2):cloudData.records).sort((a,b)=>b.date.localeCompare(a.date));
-  if(!recs.length)return`<div class="alert-warn">No sales records in this range.</div>`;
+  const recs=(f&&t2?cloudData.records.filter(r=>r.date>=f&&r.date<=t2):f?cloudData.records.filter(r=>r.date>=f):cloudData.records).sort((a,b)=>b.date.localeCompare(a.date));
+  if(!recs.length)return`<div class="alert-warn" style="text-align:center;padding:20px">
+    <div style="font-size:14px;font-weight:700;margin-bottom:10px">No sales records found</div>
+    <div style="font-size:12px;color:var(--ink-light);margin-bottom:14px">Firebase may still be connecting. Try refreshing data.</div>
+    <button class="btn-primary" onclick="refreshAndReload()" style="font-size:12px">🔄 Refresh Data from Firebase</button>
+  </div>`;
 
   // Summary totals
   const totHSD=recs.reduce((a,r)=>a+(r.hsdNet||0),0);
@@ -2363,7 +2780,314 @@ function buildCreditRecords(f,t2){
     </div>`;
 }
 
-async function init(){await loadCloud();initBackground();}
+async function refreshOwnerData(){
+  await loadCloud();
+  await preloadHistoricalData();
+  renderOwnerReport();
+  const el=document.getElementById('ownerDataStatus');
+  if(el)el.textContent='Records loaded: '+cloudData.records.length;
+}
+
+async function refreshAndReload(){
+  syncStatus('loading','Refreshing from Firebase…');
+  await loadCloud();
+  renderOwnerFullRecords('','','sales');
+}
+
+async function init(){
+  await loadCloud();
+  initBackground();
+  // Wait for Firebase to fully connect then preload
+  await preloadHistoricalData();
+  console.log('Records in cloud:',cloudData.records.length);
+}
+
+async function preloadHistoricalData(){
+  const historical=[
+    {
+      date:'2026-05-08',
+      hsdRsp:88.72,msRsp:95.56,
+      'open_H1':29048,'cl_H1':29057,'sale_H1':9,
+      'open_H2':27213,'cl_H2':27291,'sale_H2':78,
+      'open_H3':49598,'cl_H3':49694,'sale_H3':96,
+      'open_H4':102868,'cl_H4':103565,'sale_H4':697,
+      'open_H5':474446,'cl_H5':476643,'sale_H5':2197,
+      'open_H6':338116,'cl_H6':339411,'sale_H6':1295,
+      'open_H7':135311,'cl_H7':135500,'sale_H7':189,
+      'open_H8':161564,'cl_H8':162004,'sale_H8':440,
+      'open_M1':21214,'cl_M1':21240,'sale_M1':26,
+      'open_M2':207747,'cl_M2':208426,'sale_M2':679,
+      'open_M3':63181,'cl_M3':63342,'sale_M3':161,
+      'open_M4':308922,'cl_M4':309883,'sale_M4':961,
+      hsdGross:5001,hsdTest:40,hsdNet:4961,
+      msGross:1827,msTest:20,msNet:1807,
+      hsdAmt:440139.92,msAmt:172278.92,fuelTotal:612418.84,
+      bf:3103,mobilTotal:960,depositTotal:0,csTotal:0,
+      mobilItems:[
+        {name:'4T 900ML',qty:'1',amt:310},
+        {name:'20W40 1L',qty:'1',amt:270},
+        {name:'15W40 1L',qty:'1',amt:310},
+        {name:'2T 20ML',qty:'2',amt:20},
+        {name:'2T 60ML',qty:'1',amt:23},
+        {name:'ADDON 5ML',qty:'3',amt:27}
+      ],
+      depositItems:[],
+      paytmTotal:282318,otp:10434,tanker:0,tankerName:'',
+      acctTr:0,hoBank:239000,
+      pumpExpItems:[
+        {name:'METER BHAGA',amt:3},
+        {name:'TESTING',amt:90},
+        {name:'BOUQET',amt:600},
+        {name:'RASGOLLA',amt:120},
+        {name:'RINKU PETROL',amt:300},
+        {name:'CHAI FILLER',amt:80}
+      ],
+      pumpExpTotal:1193,
+      advItems:[{name:'SUBHAS',amt:50},{name:'BHOJU JI',amt:130}],
+      advTotal:180,
+      creditSaleItems:[],
+      grossTotal:616481.84,totalDeductions:613437,finalCash:3044.84,
+      hsdMarginAmt:4961*2.5,msMarginAmt:1807*3.9,
+      grossProfit:4961*2.5+1807*3.9+960,
+      netProfit:4961*2.5+1807*3.9+960-1193-0-180,
+      savedAt:'2026-05-08T20:00:00.000Z'
+    },
+    {
+      date:'2026-05-09',
+      hsdRsp:88.72,msRsp:95.56,
+      'open_H1':29057,'cl_H1':29070,'sale_H1':13,
+      'open_H2':27291,'cl_H2':27296,'sale_H2':5,
+      'open_H3':49694,'cl_H3':49728,'sale_H3':34,
+      'open_H4':103565,'cl_H4':103765,'sale_H4':200,
+      'open_H5':476643,'cl_H5':478143,'sale_H5':1500,
+      'open_H6':339411,'cl_H6':340656,'sale_H6':1245,
+      'open_H7':135500,'cl_H7':135703,'sale_H7':203,
+      'open_H8':162004,'cl_H8':162311,'sale_H8':307,
+      'open_M1':21240,'cl_M1':21245,'sale_M1':5,
+      'open_M2':208426,'cl_M2':208943,'sale_M2':517,
+      'open_M3':63342,'cl_M3':63630,'sale_M3':288,
+      'open_M4':309883,'cl_M4':310766,'sale_M4':883,
+      hsdGross:3507,hsdTest:40,hsdNet:3467,
+      msGross:1693,msTest:20,msNet:1673,
+      hsdAmt:307592.24,msAmt:159871.88,fuelTotal:467464.12,
+      bf:3442.84,mobilTotal:374,depositTotal:0,csTotal:87778,
+      mobilItems:[{name:'Mobil',qty:'',amt:374}],
+      depositItems:[],
+      creditSaleItems:[{name:'Credit',amt:87778}],
+      paytmTotal:322607,otp:21666,tanker:960,tankerName:'Tanker',
+      acctTr:59000,hoBank:81000,
+      pumpExpItems:[{name:'Pump Expenses',amt:711}],
+      pumpExpTotal:711,
+      advItems:[{name:'Advance',amt:2200}],
+      advTotal:2200,
+      grossTotal:467464.12+3442.84+374,totalDeductions:464455,finalCash:2624.96,
+      hsdMarginAmt:3467*2.5,msMarginAmt:1673*3.9,
+      grossProfit:3467*2.5+1673*3.9+374,
+      netProfit:3467*2.5+1673*3.9+374-711-960-2200,
+      savedAt:'2026-05-09T20:00:00.000Z'
+    },
+    {
+      date:'2026-05-10',
+      hsdRsp:88.72,msRsp:95.56,
+      'open_H1':29070,'cl_H1':29190,'sale_H1':120,
+      'open_H2':27296,'cl_H2':27339,'sale_H2':43,
+      'open_H3':49728,'cl_H3':49781,'sale_H3':53,
+      'open_H4':103765,'cl_H4':104150,'sale_H4':385,
+      'open_H5':478143,'cl_H5':479967,'sale_H5':1824,
+      'open_H6':340656,'cl_H6':341578,'sale_H6':922,
+      'open_H7':135703,'cl_H7':135845,'sale_H7':142,
+      'open_H8':162311,'cl_H8':162909,'sale_H8':598,
+      'open_M1':21245,'cl_M1':21251,'sale_M1':6,
+      'open_M2':208943,'cl_M2':209617,'sale_M2':674,
+      'open_M3':63630,'cl_M3':63782,'sale_M3':152,
+      'open_M4':310766,'cl_M4':311701,'sale_M4':935,
+      hsdGross:4087,hsdTest:45,hsdNet:4042,
+      msGross:1767,msTest:20,msNet:1747,
+      hsdAmt:358606.24,msAmt:166943.32,fuelTotal:525549.56,
+      bf:2624.96,mobilTotal:28,depositTotal:0,csTotal:51500,
+      mobilItems:[{name:'Mobil',qty:'',amt:28}],
+      depositItems:[],
+      creditSaleItems:[{name:'Credit',amt:51500}],
+      paytmTotal:358504,otp:2311,tanker:0,tankerName:'',
+      acctTr:0,hoBank:211000,
+      pumpExpItems:[{name:'Pump Expenses',amt:1055}],
+      pumpExpTotal:1055,
+      advItems:[{name:'Advance',amt:702}],
+      advTotal:702,
+      grossTotal:525549.56+2624.96+28,totalDeductions:522072,finalCash:6130.52,
+      hsdMarginAmt:4042*2.5,msMarginAmt:1747*3.9,
+      grossProfit:4042*2.5+1747*3.9+28,
+      netProfit:4042*2.5+1747*3.9+28-1055-0-702,
+      savedAt:'2026-05-10T20:00:00.000Z'
+    },
+    {
+      date:'2026-05-11',
+      hsdRsp:88.72,msRsp:95.56,
+      'open_H1':29190,'cl_H1':29209,'sale_H1':19,
+      'open_H2':27339,'cl_H2':27415,'sale_H2':76,
+      'open_H3':49781,'cl_H3':49844,'sale_H3':63,
+      'open_H4':104150,'cl_H4':104479,'sale_H4':329,
+      'open_H5':479967,'cl_H5':481815,'sale_H5':1848,
+      'open_H6':341578,'cl_H6':343235,'sale_H6':1657,
+      'open_H7':135845,'cl_H7':136026,'sale_H7':181,
+      'open_H8':162909,'cl_H8':163134,'sale_H8':225,
+      'open_M1':21251,'cl_M1':21275,'sale_M1':24,
+      'open_M2':209617,'cl_M2':210183,'sale_M2':566,
+      'open_M3':63782,'cl_M3':63963,'sale_M3':181,
+      'open_M4':311701,'cl_M4':312573,'sale_M4':872,
+      hsdGross:4398,hsdTest:40,hsdNet:4358,
+      msGross:1643,msTest:20,msNet:1623,
+      hsdAmt:386641.76,msAmt:155093.88,fuelTotal:541735.64,
+      bf:6128.52,mobilTotal:180,depositTotal:0,csTotal:80000,
+      mobilItems:[{name:'Mobil',qty:'',amt:180}],
+      depositItems:[],
+      creditSaleItems:[{name:'Credit',amt:80000}],
+      paytmTotal:325039,otp:6449,tanker:173,tankerName:'Tanker',
+      acctTr:0,hoBank:238000,
+      pumpExpItems:[{name:'Pump Expenses',amt:860}],
+      pumpExpTotal:860,
+      advItems:[{name:'Advance',amt:234}],
+      advTotal:234,
+      grossTotal:541735.64+6128.52+180,totalDeductions:650755,finalCash:2889.16,
+      hsdMarginAmt:4358*2.5,msMarginAmt:1623*3.9,
+      grossProfit:4358*2.5+1623*3.9+180,
+      netProfit:4358*2.5+1623*3.9+180-860-173-234,
+      savedAt:'2026-05-11T20:00:00.000Z'
+    },
+    {
+      date:'2026-05-12',
+      hsdRsp:88.72,msRsp:95.56,
+      'open_H1':29209,'cl_H1':29237,'sale_H1':28,
+      'open_H2':27415,'cl_H2':27564,'sale_H2':149,
+      'open_H3':49844,'cl_H3':49983,'sale_H3':139,
+      'open_H4':104479,'cl_H4':104609,'sale_H4':130,
+      'open_H5':481815,'cl_H5':484068,'sale_H5':2253,
+      'open_H6':343235,'cl_H6':345032,'sale_H6':1797,
+      'open_H7':136026,'cl_H7':136241,'sale_H7':215,
+      'open_H8':163134,'cl_H8':163456,'sale_H8':322,
+      'open_M1':21275,'cl_M1':21312,'sale_M1':37,
+      'open_M2':210183,'cl_M2':210928,'sale_M2':745,
+      'open_M3':63963,'cl_M3':64153,'sale_M3':190,
+      'open_M4':312573,'cl_M4':313885,'sale_M4':1312,
+      hsdGross:5033,hsdTest:40,hsdNet:4993,
+      msGross:2284,msTest:25,msNet:2259,
+      hsdAmt:442978.96,msAmt:215870.04,fuelTotal:658849,
+      bf:2889.16,mobilTotal:111,depositTotal:0,csTotal:31250,
+      mobilItems:[{name:'Mobil',qty:'',amt:111}],
+      depositItems:[],
+      creditSaleItems:[{name:'Credit',amt:31250}],
+      paytmTotal:339138,otp:2675,tanker:0,tankerName:'',
+      acctTr:0,hoBank:301000,
+      pumpExpItems:[{name:'Pump Expenses',amt:370}],
+      pumpExpTotal:370,
+      advItems:[{name:'Advance',amt:4457}],
+      advTotal:4457,
+      grossTotal:658849+2889.16+111,totalDeductions:679040,finalCash:2619.16,
+      hsdMarginAmt:4993*2.5,msMarginAmt:2259*3.9,
+      grossProfit:4993*2.5+2259*3.9+111,
+      netProfit:4993*2.5+2259*3.9+111-370-0-4457,
+      savedAt:'2026-05-12T20:00:00.000Z'
+    },
+    {
+      date:'2026-05-13',
+      hsdRsp:88.72,msRsp:95.56,
+      'open_H1':29237,'cl_H1':29242,'sale_H1':5,
+      'open_H2':27564,'cl_H2':27680,'sale_H2':116,
+      'open_H3':49983,'cl_H3':50185,'sale_H3':202,
+      'open_H4':104609,'cl_H4':105337,'sale_H4':728,
+      'open_H5':484068,'cl_H5':485774,'sale_H5':1706,
+      'open_H6':345032,'cl_H6':346466,'sale_H6':1434,
+      'open_H7':136241,'cl_H7':136516,'sale_H7':275,
+      'open_H8':163456,'cl_H8':163726,'sale_H8':270,
+      'open_M1':21312,'cl_M1':21327,'sale_M1':15,
+      'open_M2':210928,'cl_M2':211512,'sale_M2':584,
+      'open_M3':64153,'cl_M3':64505,'sale_M3':352,
+      'open_M4':313885,'cl_M4':314889,'sale_M4':1004,
+      hsdGross:4736,hsdTest:40,hsdNet:4696,
+      msGross:1955,msTest:20,msNet:1935,
+      hsdAmt:416629.12,msAmt:184908.60,fuelTotal:601537.72,
+      bf:2619.16,mobilTotal:75,depositTotal:0,csTotal:22500,
+      mobilItems:[{name:'Mobil',qty:'',amt:75}],
+      depositItems:[],
+      creditSaleItems:[{name:'Credit',amt:22500}],
+      paytmTotal:285921,otp:2293,tanker:1080,tankerName:'Tanker',
+      acctTr:0,hoBank:327000,
+      pumpExpItems:[{name:'Pump Expenses',amt:183}],
+      pumpExpTotal:183,
+      advItems:[{name:'Advance',amt:150}],
+      advTotal:150,
+      grossTotal:601537.72+2619.16+75,totalDeductions:638977,finalCash:2604.88,
+      hsdMarginAmt:4696*2.5,msMarginAmt:1935*3.9,
+      grossProfit:4696*2.5+1935*3.9+75,
+      netProfit:4696*2.5+1935*3.9+75-183-1080-150,
+      savedAt:'2026-05-13T20:00:00.000Z'
+    },
+    {
+      date:'2026-05-14',
+      hsdRsp:88.72,msRsp:95.56,
+      'open_H1':29242,'cl_H1':29253,'sale_H1':11,
+      'open_H2':27680,'cl_H2':27777,'sale_H2':97,
+      'open_H3':50185,'cl_H3':50402,'sale_H3':217,
+      'open_H4':105337,'cl_H4':105550,'sale_H4':213,
+      'open_H5':485774,'cl_H5':487878,'sale_H5':2104,
+      'open_H6':346466,'cl_H6':347853,'sale_H6':1387,
+      'open_H7':136516,'cl_H7':136611,'sale_H7':95,
+      'open_H8':163726,'cl_H8':163990,'sale_H8':264,
+      'open_M1':21327,'cl_M1':21349,'sale_M1':22,
+      'open_M2':211512,'cl_M2':212270,'sale_M2':758,
+      'open_M3':64505,'cl_M3':64798,'sale_M3':293,
+      'open_M4':314889,'cl_M4':315926,'sale_M4':1037,
+      hsdGross:4388,hsdTest:40,hsdNet:4348,
+      msGross:2110,msTest:20,msNet:2090,
+      hsdAmt:385754.56,msAmt:199720.40,fuelTotal:585474.96,
+      bf:2604.88,mobilTotal:79,depositTotal:0,csTotal:500,
+      mobilItems:[{name:'Mobil',qty:'',amt:79}],
+      depositItems:[],
+      creditSaleItems:[{name:'Credit',amt:500}],
+      paytmTotal:245534,otp:2525,tanker:880,tankerName:'Tanker',
+      acctTr:0,hoBank:288000,
+      pumpExpItems:[{name:'Pump Expenses',amt:1254}],
+      pumpExpTotal:1254,
+      advItems:[{name:'Advance',amt:2300}],
+      advTotal:2300,
+      grossTotal:585474.96+2604.88+79,totalDeductions:585697,finalCash:2965.84,
+      hsdMarginAmt:4348*2.5,msMarginAmt:2090*3.9,
+      grossProfit:4348*2.5+2090*3.9+79,
+      netProfit:4348*2.5+2090*3.9+79-1254-880-2300,
+      savedAt:'2026-05-14T20:00:00.000Z'
+    }
+  ];
+
+  // Only preload if these dates don't already exist
+  const existingDates=cloudData.records.map(r=>r.date);
+  const toAdd=historical.filter(r=>!existingDates.includes(r.date));
+  if(toAdd.length===0)return; // already loaded
+
+  // Add to records (oldest first so newest ends up at top)
+  toAdd.reverse().forEach(r=>{cloudData.records.unshift(r);});
+
+  // Set prevClosing to 14 May closing meters if no newer record exists
+  const latestDate=cloudData.records[0]?.date||'';
+  if(latestDate<='2026-05-14'){
+    const last=historical[historical.length-1];
+    ['H1','H2','H3','H4','H5','H6','H7','H8','M1','M2','M3','M4'].forEach(n=>{
+      cloudData.prevClosing[n]=last['cl_'+n]||0;
+    });
+    cloudData.prevBF=2965.84;
+  }
+
+  // Update cumulative totals
+  const c=cloudData.cumulative;
+  toAdd.forEach(r=>{
+    c.totalAdv=(c.totalAdv||0)+(r.advTotal||0);
+    c.totalExp=(c.totalExp||0)+(r.pumpExpTotal||0)+(r.tanker||0);
+    c.totalMobil=(c.totalMobil||0)+(r.mobilTotal||0);
+    c.totalCS=(c.totalCS||0)+(r.csTotal||0);
+  });
+
+  await saveCloud();
+  console.log('Historical data preloaded: 8-14 May 2026');
+}
 init();
 function createParticles(){}
 
