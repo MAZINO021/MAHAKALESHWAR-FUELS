@@ -2199,9 +2199,17 @@ function initThreeScene(canvas,container){
     controls.target.set(0,0.8,0);controls.update();
   }catch(e){console.warn('OrbitControls failed, continuing without:',e);}
 
-  // Load GLB
-  const loader=new THREE.GLTFLoader();
-  loader.load('misato_katsuragi.glb',(gltf)=>{
+  // Try multiple paths for the GLB file
+  const glbPaths=[
+    'misato_katsuragi.glb',
+    '/MAHAKALESHWAR-FUELS/misato_katsuragi.glb',
+    './misato_katsuragi.glb'
+  ];
+  let pathIndex=0;
+
+  function tryLoadGLB(){
+    const loader=new THREE.GLTFLoader();
+    loader.load(glbPaths[pathIndex],(gltf)=>{
     const model=gltf.scene;
     const box=new THREE.Box3().setFromObject(model);
     const center=box.getCenter(new THREE.Vector3());
@@ -2272,10 +2280,17 @@ function initThreeScene(canvas,container){
       if(el)el.innerHTML=`<div style="font-size:26px;margin-bottom:8px">🌸</div><div style="font-size:13px;font-weight:600;color:#fff">Loading Bella... ${pct}%</div><div style="width:130px;height:5px;background:rgba(255,255,255,0.15);border-radius:3px;margin:10px auto 0"><div style="width:${pct}%;height:100%;background:linear-gradient(90deg,#3DB52E,#D4B84A);border-radius:3px;transition:width .3s"></div></div>`;
     }
   },(err)=>{
-    console.error('GLB error:',err);
-    const el=document.getElementById('bella3dLoading');
-    if(el)el.innerHTML='<div style="font-size:30px">🌸</div><div style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:10px">Make sure misato_katsuragi.glb<br>is uploaded to your GitHub repo</div>';
+    pathIndex++;
+    if(pathIndex<glbPaths.length){
+      tryLoadGLB(); // try next path
+    } else {
+      console.error('GLB error on all paths:',err);
+      const el=document.getElementById('bella3dLoading');
+      if(el)el.innerHTML='<div style="font-size:30px">🌸</div><div style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:10px">Make sure misato_katsuragi.glb<br>is uploaded to your GitHub repo</div>';
+    }
   });
+  }
+  tryLoadGLB();
 }
 // ── MANAGER QUERY (MF Assistant — no profit info) ─────────────────────────────
 function quickAsk(q){document.getElementById('nlQuery').value=q;askQuery();}
