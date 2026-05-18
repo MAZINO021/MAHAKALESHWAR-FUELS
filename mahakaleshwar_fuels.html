@@ -1003,122 +1003,138 @@ async function saveAttendance(){
 }
 
 // ── MODULE 3: INSPECTION ──────────────────────────────────────────────────────
+let inspDate=todayKey0();
 function renderInspection(){
-  const today=todayKey0();
-  const saved=inspectData[today]||{};
-  // Get today's sales record for meter readings
-  const todayRec=cloudData.records.find(r=>r.date===today)||cloudData.records[0];
-  // Total HSD sale from meters
-  const hsdSaleToday=todayRec?NOZZLES_HSD.reduce((a,n)=>a+(todayRec['sale_'+n]||0),0):0;
-  const msSaleToday=todayRec?NOZZLES_MS.reduce((a,n)=>a+(todayRec['sale_'+n]||0),0):0;
-  // Net sale (after testing)
-  const hsdNetToday=todayRec?(todayRec.hsdNet||hsdSaleToday):hsdSaleToday;
-  const msNetToday=todayRec?(todayRec.msNet||msSaleToday):msSaleToday;
+  document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="backToModules()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
+  document.getElementById('stepContent').innerHTML=`
+    <div class="card">
+      <div class="card-title">📅 Select Inspection Date</div>
+      <div class="field">
+        <div class="lbl">Date</div>
+        <input type="date" id="inspDateInput" value="${inspDate}" max="${todayKey0()}" style="padding:10px 14px;font-size:16px;border:2px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none">
+      </div>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn-primary" onclick="confirmInspDate()">Continue →</button>
+      </div>
+    </div>`;
+}
+
+function confirmInspDate(){
+  inspDate=document.getElementById('inspDateInput').value||todayKey0();
+  renderInspectionForm();
+}
+
+function renderInspectionForm(){
+  const saved=inspectData[inspDate]||{};
+  const dateRec=cloudData.records.find(r=>r.date===inspDate);
+  const hsdNet=dateRec?(dateRec.hsdNet||0):0;
+  const msNet=dateRec?(dateRec.msNet||0):0;
+  // Auto-load previous dip from previous inspection record
+  const prevInspEntry=Object.entries(inspectData)
+    .filter(([d])=>d<inspDate)
+    .sort((a,b)=>b[0].localeCompare(a[0]))[0];
+  const prevInspDate=prevInspEntry?prevInspEntry[0]:'—';
+  const prevInspData=prevInspEntry?prevInspEntry[1]:{};
+  const autoPrevHSD=saved.hsdPrevDip!=null?saved.hsdPrevDip:(prevInspData.hsdDip||'');
+  const autoPrevMS=saved.msPrevDip!=null?saved.msPrevDip:(prevInspData.msDip||'');
 
   document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="backToModules()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
   document.getElementById('stepContent').innerHTML=`
   <div class="card">
-    <div class="card-title">🔍 Daily Inspection — ${today}</div>
-    <div class="alert-info" style="margin-bottom:16px">Enter dip readings and received stock. System calculates expected stock and shows variance.</div>
-
-    <!-- HSD SECTION -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="card-title" style="margin:0">🔍 Inspection — ${inspDate}</div>
+      <button class="btn-secondary" onclick="renderInspection()" style="font-size:11px;padding:5px 10px">← Change Date</button>
+    </div>
+    <div class="alert-info" style="margin-bottom:16px">
+      Previous dip auto-loaded from <b>${prevInspDate}</b> inspection.
+      ${dateRec?`Net sale auto-filled from <b>${inspDate}</b> sales record.`:'No sales record for this date — enter manually.'}
+    </div>
     <div style="margin-bottom:20px">
       <div style="font-size:13px;font-weight:700;color:var(--ioc-navy);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid var(--ioc-navy-light)"><span class="tag tag-hsd">HSD</span> Diesel Stock Analysis</div>
       <div class="grid3" style="margin-bottom:10px">
-        <div class="field">
-          <div class="lbl">Previous Dip (Yesterday L)</div>
-          <input type="number" id="insp_hsd_prevdip" value="${saved.hsdPrevDip||''}" placeholder="Yesterday's dip" step="0.01">
-        </div>
-        <div class="field">
-          <div class="lbl">Received Today (L)</div>
-          <input type="number" id="insp_hsd_recv" value="${saved.hsdRecv||0}" step="0.01" placeholder="0">
-        </div>
-        <div class="field">
-          <div class="lbl">Net Sale Today (L) <span style="color:var(--ink-light);font-weight:400">(auto)</span></div>
-          <input type="number" id="insp_hsd_sale" value="${hsdNetToday.toFixed(2)}" step="0.01" style="background:#f8f9ff">
-        </div>
+        <div class="field"><div class="lbl">Previous Dip (${prevInspDate}) L</div><input type="number" id="insp_hsd_prevdip" value="${autoPrevHSD}" placeholder="Prev dip" step="0.01"></div>
+        <div class="field"><div class="lbl">Received Today (L)</div><input type="number" id="insp_hsd_recv" value="${saved.hsdRecv||0}" step="0.01" placeholder="0"></div>
+        <div class="field"><div class="lbl">Net Sale ${inspDate} (L)</div><input type="number" id="insp_hsd_sale" value="${saved.hsdSale||hsdNet.toFixed(2)}" step="0.01" style="background:#f8f9ff"></div>
       </div>
       <div class="grid2">
-        <div class="field">
-          <div class="lbl">Current Dip Reading (L)</div>
-          <input type="number" id="insp_hsd_dip" value="${saved.hsdDip||''}" placeholder="Enter today's dip" step="0.01">
-        </div>
-        <div class="field">
-          <div class="lbl">Testing Done Today (L)</div>
-          <input type="number" id="insp_hsd_test" value="${saved.hsdTest||0}" step="0.01" placeholder="0">
-        </div>
+        <div class="field"><div class="lbl">Current Dip Reading (L)</div><input type="number" id="insp_hsd_dip" value="${saved.hsdDip||''}" placeholder="Today's dip" step="0.01"></div>
+        <div class="field"><div class="lbl">Testing Done (L)</div><input type="number" id="insp_hsd_test" value="${saved.hsdTest||0}" step="0.01" placeholder="0"></div>
       </div>
       <div id="insp_hsd_result" style="margin-top:10px;display:none"></div>
     </div>
-
-    <!-- MS SECTION -->
     <div>
       <div style="font-size:13px;font-weight:700;color:var(--ioc-red);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid var(--ioc-red-light)"><span class="tag tag-ms">MS</span> Petrol Stock Analysis</div>
       <div class="grid3" style="margin-bottom:10px">
-        <div class="field">
-          <div class="lbl">Previous Dip (Yesterday L)</div>
-          <input type="number" id="insp_ms_prevdip" value="${saved.msPrevDip||''}" placeholder="Yesterday's dip" step="0.01">
-        </div>
-        <div class="field">
-          <div class="lbl">Received Today (L)</div>
-          <input type="number" id="insp_ms_recv" value="${saved.msRecv||0}" step="0.01" placeholder="0">
-        </div>
-        <div class="field">
-          <div class="lbl">Net Sale Today (L) <span style="color:var(--ink-light);font-weight:400">(auto)</span></div>
-          <input type="number" id="insp_ms_sale" value="${msNetToday.toFixed(2)}" step="0.01" style="background:#f8f9ff">
-        </div>
+        <div class="field"><div class="lbl">Previous Dip (${prevInspDate}) L</div><input type="number" id="insp_ms_prevdip" value="${autoPrevMS}" placeholder="Prev dip" step="0.01"></div>
+        <div class="field"><div class="lbl">Received Today (L)</div><input type="number" id="insp_ms_recv" value="${saved.msRecv||0}" step="0.01" placeholder="0"></div>
+        <div class="field"><div class="lbl">Net Sale ${inspDate} (L)</div><input type="number" id="insp_ms_sale" value="${saved.msSale||msNet.toFixed(2)}" step="0.01" style="background:#f8f9ff"></div>
       </div>
       <div class="grid2">
-        <div class="field">
-          <div class="lbl">Current Dip Reading (L)</div>
-          <input type="number" id="insp_ms_dip" value="${saved.msDip||''}" placeholder="Enter today's dip" step="0.01">
-        </div>
-        <div class="field">
-          <div class="lbl">Testing Done Today (L)</div>
-          <input type="number" id="insp_ms_test" value="${saved.msTest||0}" step="0.01" placeholder="0">
-        </div>
+        <div class="field"><div class="lbl">Current Dip Reading (L)</div><input type="number" id="insp_ms_dip" value="${saved.msDip||''}" placeholder="Today's dip" step="0.01"></div>
+        <div class="field"><div class="lbl">Testing Done (L)</div><input type="number" id="insp_ms_test" value="${saved.msTest||0}" step="0.01" placeholder="0"></div>
       </div>
       <div id="insp_ms_result" style="margin-top:10px;display:none"></div>
     </div>
   </div>
-
-  <!-- STOCK ANALYSIS RESULT -->
   <div id="stockAnalysisCard" style="display:none" class="card">
-    <div class="card-title">📊 Stock Analysis Report</div>
+    <div class="card-title">📊 Stock Analysis Report — ${inspDate}</div>
     <div id="stockAnalysisContent"></div>
   </div>
-
-  <!-- HISTORICAL DIP TABLE -->
+  <!-- TOTAL INSPECTION ANALYSIS -->
   <div class="card">
-    <div class="card-title">📅 Recent Inspection History</div>
-    <div style="overflow-x:auto">
-      <table class="rtable">
-        <thead><tr><th>Date</th><th>HSD Dip</th><th>HSD Recv</th><th>HSD Diff</th><th>MS Dip</th><th>MS Recv</th><th>MS Diff</th></tr></thead>
-        <tbody>
-          ${Object.entries(inspectData).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,10).map(([date,d])=>`
-            <tr>
-              <td>${date}</td>
-              <td>${(d.hsdDip||0).toFixed(2)} L</td>
-              <td>${(d.hsdRecv||0).toFixed(2)} L</td>
-              <td style="color:${Math.abs(d.hsdDiff||0)>5?'var(--ioc-red)':'var(--green)'};font-weight:600">${d.hsdDiff!=null?(d.hsdDiff>0?'+':'')+d.hsdDiff.toFixed(2)+' L':'—'}</td>
-              <td>${(d.msDip||0).toFixed(2)} L</td>
-              <td>${(d.msRecv||0).toFixed(2)} L</td>
-              <td style="color:${Math.abs(d.msDiff||0)>5?'var(--ioc-red)':'var(--green)'};font-weight:600">${d.msDiff!=null?(d.msDiff>0?'+':'')+d.msDiff.toFixed(2)+' L':'—'}</td>
-            </tr>
-          `).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--ink-light);padding:16px">No history yet</td></tr>'}
-        </tbody>
-      </table>
-    </div>
+    <div class="card-title">📊 Total Cumulative Stock Analysis</div>
+    ${(()=>{
+      const allDates=Object.keys(inspectData).sort();
+      if(!allDates.length)return'<div style="color:var(--ink-light);font-size:12px;padding:8px">No inspection data yet. Save daily inspections to see totals.</div>';
+      const totalHSDRecv=allDates.reduce((a,d)=>a+(inspectData[d].hsdRecv||0),0);
+      const totalMSRecv=allDates.reduce((a,d)=>a+(inspectData[d].msRecv||0),0);
+      const totalHSDSale=cloudData.records.reduce((a,r)=>a+(r.hsdNet||0),0);
+      const totalMSSale=cloudData.records.reduce((a,r)=>a+(r.msNet||0),0);
+      const latestInsp=inspectData[allDates[allDates.length-1]]||{};
+      const firstInsp=inspectData[allDates[0]]||{};
+      return `<div class="grid2" style="margin-bottom:12px">
+        <div style="padding:12px;background:var(--ioc-navy-light);border-radius:var(--r)">
+          <div style="font-size:11px;font-weight:700;color:var(--ioc-navy);margin-bottom:6px"><span class="tag tag-hsd">HSD</span> Diesel</div>
+          <div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0"><span>Total Received</span><span><b>${totalHSDRecv.toFixed(2)} L</b></span></div>
+          <div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0"><span>Total Net Sold</span><span><b>${totalHSDSale.toFixed(2)} L</b></span></div>
+          <div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid var(--ioc-border);margin-top:4px"><span>Current Dip</span><span style="font-weight:700;color:var(--ioc-navy)">${(latestInsp.hsdDip||0).toFixed(2)} L</span></div>
+        </div>
+        <div style="padding:12px;background:var(--ioc-red-light);border-radius:var(--r)">
+          <div style="font-size:11px;font-weight:700;color:var(--ioc-red);margin-bottom:6px"><span class="tag tag-ms">MS</span> Petrol</div>
+          <div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0"><span>Total Received</span><span><b>${totalMSRecv.toFixed(2)} L</b></span></div>
+          <div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0"><span>Total Net Sold</span><span><b>${totalMSSale.toFixed(2)} L</b></span></div>
+          <div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid var(--ioc-border);margin-top:4px"><span>Current Dip</span><span style="font-weight:700;color:var(--ioc-red)">${(latestInsp.msDip||0).toFixed(2)} L</span></div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--ink-light);text-align:center">Based on ${allDates.length} inspection entries · ${cloudData.records.length} sales records · Last updated: ${allDates[allDates.length-1]}</div>`;
+    })()}
   </div>
-
-  <div class="btn-row">
-    <button class="btn-primary" onclick="calcInspection()">📊 Calculate Stock</button>
-    <button class="btn-secondary" onclick="saveInspection()">💾 Save</button>
+  <div class="card">
+    <div class="card-title">📅 Daily Inspection History</div>
+    <div style="overflow-x:auto"><table class="rtable">
+      <thead><tr><th>Date</th><th>HSD Dip</th><th>HSD Recv</th><th>HSD Diff</th><th>MS Dip</th><th>MS Recv</th><th>MS Diff</th></tr></thead>
+      <tbody>${Object.entries(inspectData).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,10).map(([date,d])=>`
+        <tr>
+          <td>${date}</td><td>${(d.hsdDip||0).toFixed(2)} L</td><td>${(d.hsdRecv||0).toFixed(2)} L</td>
+          <td style="color:${Math.abs(d.hsdDiff||0)>5?'var(--ioc-red)':' var(--green)'};font-weight:600">${d.hsdDiff!=null?(d.hsdDiff>0?'+':'')+d.hsdDiff.toFixed(2)+' L':'—'}</td>
+          <td>${(d.msDip||0).toFixed(2)} L</td><td>${(d.msRecv||0).toFixed(2)} L</td>
+          <td style="color:${Math.abs(d.msDiff||0)>5?'var(--ioc-red)':'var(--green)'};font-weight:600">${d.msDiff!=null?(d.msDiff>0?'+':'')+d.msDiff.toFixed(2)+' L':'—'}</td>
+        </tr>`).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--ink-light);padding:16px">No history yet</td></tr>'}</tbody>
+    </table></div>
   </div>
+  <div class="btn-row"><button class="btn-primary" onclick="calcInspection()">📊 Calculate Stock</button><button class="btn-secondary" onclick="saveInspection()">💾 Save</button></div>
   <div id="inspMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>`;
 }
 
 function calcInspection(){
+  // Auto-refresh sale from sales record for the selected date
+  const dateRec=cloudData.records.find(r=>r.date===inspDate);
+  if(dateRec){
+    const hsdEl=document.getElementById('insp_hsd_sale');
+    const msEl=document.getElementById('insp_ms_sale');
+    if(hsdEl&&!hsdEl._userEdited)hsdEl.value=(dateRec.hsdNet||0).toFixed(2);
+    if(msEl&&!msEl._userEdited)msEl.value=(dateRec.msNet||0).toFixed(2);
+  }
   // HSD
   const hsdPrevDip=gv('insp_hsd_prevdip');
   const hsdRecv=gv('insp_hsd_recv');
@@ -1198,9 +1214,8 @@ function calcInspection(){
 }
 
 async function saveInspection(){
-  const today=todayKey0();
   const diffs=window._inspDiffs||{};
-  inspectData[today]={
+  inspectData[inspDate]={
     hsdDip:gv('insp_hsd_dip'),hsdPrevDip:gv('insp_hsd_prevdip'),
     hsdRecv:gv('insp_hsd_recv'),hsdSale:gv('insp_hsd_sale'),
     hsdTest:gv('insp_hsd_test'),hsdDiff:diffs.hsdDiff||0,
@@ -1210,8 +1225,8 @@ async function saveInspection(){
     savedAt:new Date().toISOString()
   };
   await cloudSet(STORE_KEY_INSPECT,inspectData);
-  document.getElementById('inspMsg').textContent='✅ Inspection saved!';
-  setTimeout(()=>document.getElementById('inspMsg').textContent='',3000);
+  const el=document.getElementById('inspMsg');
+  if(el){el.textContent=`✅ Inspection saved for ${inspDate}!`;setTimeout(()=>el.textContent='',3000);}
 }
 
 // ── MODULE 4: TESTING ─────────────────────────────────────────────────────────
@@ -1378,12 +1393,47 @@ function showCreditParty(name){
 // ── OWNER REPORT ──────────────────────────────────────────────────────────────
 function renderOwnerReport(){
   document.getElementById('ownerReport').innerHTML=`
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-    <div style="font-size:12px;color:var(--ink-light)" id="ownerDataStatus">Records loaded: ${cloudData.records.length}</div>
-    <button onclick="refreshOwnerData()" style="padding:6px 12px;background:var(--ioc-navy-light);border:1px solid var(--ioc-border);border-radius:var(--r);font-size:11px;font-weight:600;color:var(--ioc-navy);cursor:pointer;font-family:var(--ui)">🔄 Refresh Data</button>
-  </div>
+  ${(()=>{
+    const recs=cloudData.records;
+    const today=new Date().toISOString().slice(0,10);
+    const ms2=new Date();ms2.setDate(1);const mStart=ms2.toISOString().slice(0,10);
+    const mRecs=recs.filter(r=>r.date>=mStart&&r.date<=today);
+    const todayRec=recs.find(r=>r.date===today);
+    const mHSD=mRecs.reduce((a,r)=>a+(r.hsdNet||0),0);
+    const mMS=mRecs.reduce((a,r)=>a+(r.msNet||0),0);
+    const mFuel=mRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
+    const mProfit=mRecs.reduce((a,r)=>a+(r.netProfit||0),0);
+    const mCash=mRecs.reduce((a,r)=>a+(r.finalCash||0),0);
+    const lastBF=cloudData.prevBF||0;
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">
+      <div style="padding:12px 14px;background:linear-gradient(135deg,#0A1F5C,#1a3a7c);border-radius:var(--rl);color:#fff">
+        <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.05em">Today's BF</div>
+        <div style="font-size:18px;font-weight:700;margin-top:3px">₹${fmt(lastBF)}</div>
+        <div style="font-size:10px;opacity:.6;margin-top:2px">${today}</div>
+      </div>
+      <div style="padding:12px 14px;background:linear-gradient(135deg,#1A6614,#2d9e24);border-radius:var(--rl);color:#fff">
+        <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.05em">Month Profit</div>
+        <div style="font-size:18px;font-weight:700;margin-top:3px">₹${fmt(mProfit)}</div>
+        <div style="font-size:10px;opacity:.6;margin-top:2px">${mRecs.length} days</div>
+      </div>
+      <div style="padding:12px 14px;background:linear-gradient(135deg,#8B1A1A,#C2185B);border-radius:var(--rl);color:#fff">
+        <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.05em">Month Fuel</div>
+        <div style="font-size:16px;font-weight:700;margin-top:3px">₹${fmt(mFuel)}</div>
+        <div style="font-size:10px;opacity:.6;margin-top:2px">HSD ${mHSD.toFixed(0)}L · MS ${mMS.toFixed(0)}L</div>
+      </div>
+      <div style="padding:12px 14px;background:linear-gradient(135deg,#5C4A00,#a07800);border-radius:var(--rl);color:#fff">
+        <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.05em">Records</div>
+        <div style="font-size:18px;font-weight:700;margin-top:3px">${recs.length}</div>
+        <div style="font-size:10px;opacity:.6;margin-top:2px">Total days</div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:12px;color:var(--ink-light)">📊 ${mRecs.length} records this month</div>
+      <button onclick="refreshOwnerData()" style="padding:6px 12px;background:var(--ioc-navy-light);border:1px solid var(--ioc-border);border-radius:var(--r);font-size:11px;font-weight:600;color:var(--ioc-navy);cursor:pointer;font-family:var(--ui)">🔄 Refresh</button>
+    </div>`;
+  })()}
   <div id="ownerModuleSelect" class="card">
-    <div class="card-title">👑 Owner Dashboard — Select Module</div>
+    <div class="card-title">👑 Owner Dashboard</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" id="ownerModuleGrid">
       <button onclick="openOwnerTab('reports')" style="padding:22px 16px;background:var(--ioc-navy-light);border:1.5px solid var(--ioc-border);border-radius:var(--rl);cursor:pointer;text-align:left;transition:all .2s;font-family:var(--ui)" onmouseover="this.style.borderColor='var(--ioc-red)';this.style.background='#FFF5F5'" onmouseout="this.style.borderColor='var(--ioc-border)';this.style.background='var(--ioc-navy-light)'">
         <div style="font-size:28px;margin-bottom:10px">📊</div>
@@ -1449,6 +1499,11 @@ function ownerBackBtn(){
 function renderOwnerReports(){
   document.getElementById('ownerTabContent').innerHTML=`
     ${ownerBackBtn()}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button onclick="openOwnerTab('fullrecords')" style="padding:7px 14px;background:var(--ioc-red-light);border:1px solid var(--ioc-red);border-radius:var(--r);font-size:12px;font-weight:600;color:var(--ioc-red);cursor:pointer;font-family:var(--ui)">📋 Full Manager Records</button>
+      <button onclick="openOwnerTab('growth')" style="padding:7px 14px;background:var(--ioc-navy-light);border:1px solid var(--ioc-navy);border-radius:var(--r);font-size:12px;font-weight:600;color:var(--ioc-navy);cursor:pointer;font-family:var(--ui)">📈 Growth Analysis</button>
+      <button onclick="openOwnerTab('deposit')" style="padding:7px 14px;background:var(--ioc-navy-light);border:1px solid var(--ioc-navy);border-radius:var(--r);font-size:12px;font-weight:600;color:var(--ioc-navy);cursor:pointer;font-family:var(--ui)">💰 Deposits</button>
+    </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
       <button class="mbtn active" id="own_profit" onclick="showOwnerTab('profit')">📈 Profit</button>
       <button class="mbtn" id="own_portfolio" onclick="showOwnerTab('portfolio')">💼 Portfolio</button>
@@ -2373,6 +2428,21 @@ function mgrLocalAnswer(q){
     }
   }
 
+  // ── NOZZLE SPECIFIC — "h6 sale", "total sale from h6", "m2 nozzle"
+  const nozzleMatch=q.match(/\b(h[1-8]|m[1-4])\b/i);
+  if(nozzleMatch){
+    const nozzle=nozzleMatch[1].toUpperCase();
+    const iHSD=NOZZLES_HSD.includes(nozzle);
+    const rsp_key=iHSD?'hsdRsp':'msRsp';
+    const entries=allRecs
+      .filter(r=>r['sale_'+nozzle]!=null)
+      .map(r=>({date:r.date,open:r['open_'+nozzle]||0,close:r['cl_'+nozzle]||0,sale:r['sale_'+nozzle]||0,rsp:r[rsp_key]||0}));
+    const totalL=entries.reduce((a,e)=>a+e.sale,0);
+    const totalAmt=entries.reduce((a,e)=>a+(e.sale*e.rsp),0);
+    const lines=entries.slice(0,10).map(e=>`${e.date}: ${e.open.toFixed(2)}→${e.close.toFixed(2)} | ${e.sale.toFixed(2)}L = ₹${fmt(e.sale*e.rsp)}`).join('\n');
+    return`⛽ Nozzle ${nozzle} Total Sale:\n${totalL.toFixed(2)} L = ₹${fmt(totalAmt)}\n\nDay-wise (last 10):\n${lines||'No records found'}`;
+  }
+
   // ── "sale" or "sales" alone — show recent
   if(q.includes('sale')||q.includes('sell')){
     const lines=allRecs.slice(0,7).map(r=>`${r.date}: HSD ${(r.hsdNet||0).toFixed(1)}L MS ${(r.msNet||0).toFixed(1)}L → ₹${fmt(r.fuelTotal)}`).join('\n');
@@ -2427,7 +2497,14 @@ function mgrLocalAnswer(q){
     const adv=monthRecs.reduce((a,r)=>a+(r.advTotal||0),0);
     return`This month (${monthRecs.length} days):\nHSD: ${hsd.toFixed(1)}L | MS: ${ms.toFixed(1)}L\nFuel: ₹${fmt(fuel)}\nCash: ₹${fmt(cash)}\nExpenses: ₹${fmt(exp)}\nAdvances: ₹${fmt(adv)}`;
   }
-  return`MF Assistant here! I can help with:\n• Final cash & balance\n• Fuel sales (HSD/MS)\n• Expenses & advances\n• Paytm totals\n\nTry: "expense this month" or "bhoju advance"`;
+  // Smart default — show today's summary or last record
+  const lastRec=allRecs[0];
+  if(lastRec){
+    const adv=(lastRec.advItems||[]).map(x=>`  • ${x.name}: ₹${fmt(x.amt)}`).join('\n');
+    const exp=(lastRec.pumpExpItems||[]).map(x=>`  • ${x.name}: ₹${fmt(x.amt)}`).join('\n');
+    return`⛽ Last record (${lastRec.date}):\n\nHSD: ${(lastRec.hsdNet||0).toFixed(2)} L = ₹${fmt(lastRec.hsdAmt)}\nMS: ${(lastRec.msNet||0).toFixed(2)} L = ₹${fmt(lastRec.msAmt)}\nPaytm: ₹${fmt(lastRec.paytmTotal||0)}\nOTP: ₹${fmt(lastRec.otp||0)}\n${adv?'Advances:\n'+adv:''}\n${exp?'Expenses:\n'+exp:''}\n💰 Final Cash: ₹${fmt(lastRec.finalCash)}\n\nAsk me anything! Try:\n"14th sale" · "bhoju advance" · "h6 nozzle" · "this month fuel"`;
+  }
+  return`MF Assistant ready! Try:\n"14th sale" · "h6 nozzle total" · "bhoju advance" · "expense this month" · "paytm today"`;
 }
 
 function addMgrBubble(role,text){
@@ -2483,6 +2560,39 @@ function bellaLocalAnswer(q){
   const monthRecs=cloudData.records.filter(r=>r.date>=mStart&&r.date<=today);
   const allRecs=cloudData.records;
 
+  // ── YESTERDAY / TODAY / LAST WEEK
+  const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
+  const yStr=yesterday.toISOString().slice(0,10);
+  if(q.includes('yesterday')||q.includes('kal')){
+    const r=allRecs.find(r=>r.date===yStr);
+    if(r)return`📅 Yesterday (${r.date}):\nHSD: ${(r.hsdNet||0).toFixed(2)}L = ₹${fmt(r.hsdAmt)}\nMS: ${(r.msNet||0).toFixed(2)}L = ₹${fmt(r.msAmt)}\nPaytm: ₹${fmt(r.paytmTotal||0)} · OTP: ₹${fmt(r.otp||0)}\nAdvances: ₹${fmt(r.advTotal||0)} · Expenses: ₹${fmt(r.pumpExpTotal||0)}\nCredit Sales: ₹${fmt(r.csTotal||0)}\n💰 Final Cash: ₹${fmt(r.finalCash)}\n📈 Profit: ₹${fmt(r.netProfit||0)}`;
+    return`No record for yesterday (${yStr}).`;
+  }
+  if(q.includes('last week')||q.includes('week')){
+    const wk=new Date();wk.setDate(wk.getDate()-7);const wStr=wk.toISOString().slice(0,10);
+    const wRecs=allRecs.filter(r=>r.date>=wStr&&r.date<=today);
+    const wFuel=wRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
+    const wProfit=wRecs.reduce((a,r)=>a+(r.netProfit||0),0);
+    return`📅 Last 7 days:\n${wRecs.length} days · Fuel: ₹${fmt(wFuel)} · Profit: ₹${fmt(wProfit)}\n\n${wRecs.map(r=>`${r.date}: ₹${fmt(r.finalCash)} (P: ₹${fmt(r.netProfit||0)})`).join('\n')}`;
+  }
+  // Best/worst day
+  if(q.includes('best day')||q.includes('highest profit')){
+    const best=allRecs.reduce((a,r)=>(r.netProfit||0)>(a.netProfit||0)?r:a,allRecs[0]||{});
+    return best.date?`🏆 Best Day: ${best.date}\nProfit: ₹${fmt(best.netProfit)}\nHSD: ${(best.hsdNet||0).toFixed(1)}L · MS: ${(best.msNet||0).toFixed(1)}L\nFuel: ₹${fmt(best.fuelTotal)}\nFinal Cash: ₹${fmt(best.finalCash)}`:'No records yet.';
+  }
+  if(q.includes('worst day')||q.includes('lowest')){
+    const worst=allRecs.reduce((a,r)=>(r.netProfit||0)<(a.netProfit||0)?r:a,allRecs[0]||{});
+    return worst.date?`📉 Worst Day: ${worst.date}\nProfit: ₹${fmt(worst.netProfit)}\nFuel: ₹${fmt(worst.fuelTotal)}\nFinal Cash: ₹${fmt(worst.finalCash)}`:'No records yet.';
+  }
+  // Total all-time
+  if(q.includes('all time')||q.includes('alltime')||q.includes('total ever')){
+    const tFuel=allRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
+    const tProfit=allRecs.reduce((a,r)=>a+(r.netProfit||0),0);
+    const tHSD=allRecs.reduce((a,r)=>a+(r.hsdNet||0),0);
+    const tMS=allRecs.reduce((a,r)=>a+(r.msNet||0),0);
+    return`📊 All-Time (${allRecs.length} days):\nHSD: ${tHSD.toFixed(1)}L\nMS: ${tMS.toFixed(1)}L\nTotal Fuel: ₹${fmt(tFuel)}\nTotal Profit: ₹${fmt(tProfit)}`;
+  }
+
   // ── DATE DETECTION — "sale on 14th", "14 may", "8th may" etc
   const dateMatch=q.match(/(\d{1,2})(st|nd|rd|th)?(\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*)?/i);
   if(dateMatch){
@@ -2496,6 +2606,21 @@ function bellaLocalAnswer(q){
         return`📅 ${r.date} Full Report:\n\nFuel:\nHSD: ${(r.hsdNet||0).toFixed(2)} L @ ₹${r.hsdRsp} = ₹${fmt(r.hsdAmt)}\nMS: ${(r.msNet||0).toFixed(2)} L @ ₹${r.msRsp} = ₹${fmt(r.msAmt)}\nFuel Total: ₹${fmt(r.fuelTotal)}\n\nDeductions:\nPaytm: ₹${fmt(r.paytmTotal||0)}\nOTP: ₹${fmt(r.otp||0)}\nAdvances: ₹${fmt(r.advTotal||0)}\nExpenses: ₹${fmt(r.pumpExpTotal||0)}\nHO/Bank: ₹${fmt(r.hoBank||0)}\nCredit Sales: ₹${fmt(r.csTotal||0)}\nTanker: ₹${fmt(r.tanker||0)}\n\n💰 Final Cash: ₹${fmt(r.finalCash)}\n📈 Est. Profit: ₹${fmt(r.netProfit||0)}`;
       }
     }
+  }
+
+  // ── NOZZLE SPECIFIC — "h6 sale", "total sale from h6", "m2 nozzle"
+  const nozzleMatch=q.match(/\b(h[1-8]|m[1-4])\b/i);
+  if(nozzleMatch){
+    const nozzle=nozzleMatch[1].toUpperCase();
+    const iHSD=NOZZLES_HSD.includes(nozzle);
+    const rsp_key=iHSD?'hsdRsp':'msRsp';
+    const entries=allRecs
+      .filter(r=>r['sale_'+nozzle]!=null)
+      .map(r=>({date:r.date,open:r['open_'+nozzle]||0,close:r['cl_'+nozzle]||0,sale:r['sale_'+nozzle]||0,rsp:r[rsp_key]||0}));
+    const totalL=entries.reduce((a,e)=>a+e.sale,0);
+    const totalAmt=entries.reduce((a,e)=>a+(e.sale*e.rsp),0);
+    const lines=entries.slice(0,10).map(e=>`${e.date}: ${e.open.toFixed(2)}→${e.close.toFixed(2)} | ${e.sale.toFixed(2)}L = ₹${fmt(e.sale*e.rsp)}`).join('\n');
+    return`⛽ Nozzle ${nozzle} Total Sale:\n${totalL.toFixed(2)} L = ₹${fmt(totalAmt)}\n\nDay-wise (last 10):\n${lines||'No records found'}`;
   }
 
   // ── "sale" or "sales" alone — show recent
@@ -2595,7 +2720,18 @@ function bellaLocalAnswer(q){
     return`This month summary (${monthRecs.length} days):\nHSD Sold: ${hsd.toFixed(1)} L\nMS Sold: ${ms.toFixed(1)} L\nFuel Sales: ₹${fmt(fuel)}\nTotal Cash: ₹${fmt(cash)}\nExpenses: ₹${fmt(exp)}\nAdvances: ₹${fmt(adv)}\nEst. Profit: ₹${fmt(profit)}`;
   }
 
-  return`Hi! I'm Bella 🌸 I can answer questions about:\n• Final cash & balance forward\n• Fuel sales (HSD/MS)\n• Expenses & advances\n• Paytm & credit sales\n• Monthly profit\n\nTry: "total expense this month" or "fuel sales this month"`;
+  // Smart default — show month summary
+  const ms3=new Date();ms3.setDate(1);const mSt=ms3.toISOString().slice(0,10);
+  const mR=allRecs.filter(r=>r.date>=mSt&&r.date<=today);
+  const mHSD=mR.reduce((a,r)=>a+(r.hsdNet||0),0);
+  const mMS=mR.reduce((a,r)=>a+(r.msNet||0),0);
+  const mFuel=mR.reduce((a,r)=>a+(r.fuelTotal||0),0);
+  const mProfit=mR.reduce((a,r)=>a+(r.netProfit||0),0);
+  const mExp=mR.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+  const mAdv=mR.reduce((a,r)=>a+(r.advTotal||0),0);
+  const mCS=mR.reduce((a,r)=>a+(r.csTotal||0),0);
+  const lastRec=allRecs[0];
+  return`🌸 Bella's Smart Summary:\n\n📅 This Month (${mR.length} days):\nHSD: ${mHSD.toFixed(1)}L · MS: ${mMS.toFixed(1)}L\nFuel Sales: ₹${fmt(mFuel)}\nEst. Profit: ₹${fmt(mProfit)}\nExpenses: ₹${fmt(mExp)}\nAdvances: ₹${fmt(mAdv)}\nCredit Sales: ₹${fmt(mCS)}\n${lastRec?`\n💰 Last BF (${lastRec.date}): ₹${fmt(lastRec.finalCash)}`:''}\n\nAsk me anything! Try:\n"14th profit" · "bhoju advance" · "h6 total" · "credit this month" · "raju credit balance"`;
 }
 
 function addChatBubble(role,text){
