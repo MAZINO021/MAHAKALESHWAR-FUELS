@@ -311,6 +311,7 @@ input:focus{border-color:var(--ioc-red);box-shadow:0 0 0 2px rgba(208,30,30,.1);
         <button onclick="calPrev()" style="background:none;border:1px solid var(--cream-border);border-radius:var(--r);width:30px;height:30px;cursor:pointer;font-size:16px;color:var(--ink-mid);display:flex;align-items:center;justify-content:center">‹</button>
         <span id="calMonthLabel" style="font-family:var(--font);font-size:16px;font-weight:700;color:var(--ink);min-width:130px;text-align:center"></span>
         <button onclick="calNext()" style="background:none;border:1px solid var(--cream-border);border-radius:var(--r);width:30px;height:30px;cursor:pointer;font-size:16px;color:var(--ink-mid);display:flex;align-items:center;justify-content:center">›</button>
+        <button onclick="loadCloud().then(()=>renderHistory())" style="background:none;border:1px solid var(--ioc-border);border-radius:var(--r);width:30px;height:30px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center" title="Refresh data">🔄</button>
       </div>
     </div>
     <div id="calMonthSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px"></div>
@@ -560,7 +561,12 @@ function setMode(m){
   if(document.getElementById(map[m]))document.getElementById(map[m]).style.display='';
   if(document.getElementById(bmap[m]))document.getElementById(bmap[m]).classList.add('active');
   if(m==='manager')renderModuleSelect();
-  if(m==='history')renderHistory();
+  if(m==='history'){
+    // Show loading first, then render after short delay to ensure Firebase data is ready
+    const lbl=document.getElementById('calMonthLabel');
+    if(lbl)lbl.textContent='Loading…';
+    setTimeout(()=>renderHistory(),300);
+  }
   if(m==='owner')renderOwnerReport();
   if(m==='query')initQuery();
 }
@@ -2733,14 +2739,28 @@ let calYear=new Date().getFullYear(),calMonth=new Date().getMonth();
 
 function renderHistory(){
   const now=new Date();let y=now.getFullYear(),m=now.getMonth();
-  if(cloudData.records.length){
-    const mStr=`${y}-${String(m+1).padStart(2,'0')}`;
-    if(!cloudData.records.some(r=>r.date.startsWith(mStr))){
-      const latest=[...cloudData.records].sort((a,b)=>b.date.localeCompare(a.date))[0];
-      y=parseInt(latest.date.slice(0,4));m=parseInt(latest.date.slice(5,7))-1;
-    }
+
+  if(!cloudData.records.length){
+    // No data yet - show loading with refresh button
+    const lbl=document.getElementById('calMonthLabel');
+    if(lbl)lbl.textContent='Loading data…';
+    const grid=document.getElementById('calGrid');
+    if(grid)grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--ink-light)"><div style="font-size:24px;margin-bottom:10px">🔄</div><div style="font-size:13px;margin-bottom:14px">Loading records from Firebase…</div><button onclick="loadCloud().then(()=>renderHistory())" class="btn-primary" style="font-size:12px">Refresh Data</button></div>';
+    const listEl=document.getElementById('calRecordList');
+    if(listEl)listEl.innerHTML='<div style="text-align:center;padding:16px;color:var(--ink-light);font-size:13px">No records loaded yet. Click Refresh.</div>';
+    return;
   }
-  calYear=y;calMonth=m;renderCalendar();
+
+  // Find best month to show
+  const thisMonthStr=`${y}-${String(m+1).padStart(2,'0')}`;
+  const hasNow=cloudData.records.some(r=>r.date.startsWith(thisMonthStr));
+  if(!hasNow){
+    const latest=[...cloudData.records].sort((a,b)=>b.date.localeCompare(a.date))[0];
+    y=parseInt(latest.date.slice(0,4));
+    m=parseInt(latest.date.slice(5,7))-1;
+  }
+  calYear=y;calMonth=m;
+  renderCalendar();
 }
 
 function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCalendar();}
