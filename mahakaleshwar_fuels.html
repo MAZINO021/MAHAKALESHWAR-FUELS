@@ -886,19 +886,53 @@ async function confirmSave(){
   c.totalMobil=(c.totalMobil||0)+(d.mobilTotal||0);c.totalDeposit=(c.totalDeposit||0)+(d.depositTotal||0);c.totalCS=(c.totalCS||0)+(d.csTotal||0);
   (d.advItems||[]).forEach(x=>{c.employees=c.employees||{};c.employees[x.name]=(c.employees[x.name]||0)+x.amt;});
   (d.pumpExpItems||[]).forEach(x=>{c.expCats=c.expCats||{};c.expCats[x.name]=(c.expCats[x.name]||0)+x.amt;});
-  cloudData.prevBF=d.finalCash;
   const nc={};[...NOZZLES_HSD,...NOZZLES_MS].forEach(n=>{nc[n]=d['cl_'+n]||cloudData.prevClosing[n]||0;});
-  // Only update prevClosing if this date is the latest in all records
   const latestDate=cloudData.records.reduce((a,r)=>r.date>a?r.date:a,'');
-  if(!latestDate||d.date>=latestDate){
-    cloudData.prevClosing=nc;
-    cloudData.prevBF=d.finalCash;
-  }
-  cloudData.records=cloudData.records.filter(r=>r.date!==d.date);cloudData.records.unshift({...d,savedAt:new Date().toISOString()});
+  if(!latestDate||d.date>=latestDate){cloudData.prevClosing=nc;cloudData.prevBF=d.finalCash;}
+  cloudData.records=cloudData.records.filter(r=>r.date!==d.date);
+  cloudData.records.unshift({...d,savedAt:new Date().toISOString()});
   await saveCloud();
-  document.getElementById('saveMsg').textContent='✅ Saved! Tomorrow BF = ₹'+fmt(d.finalCash);
-  draft={};mobilItems=[];depositItems=[];advItems=[];creditSaleItems=[];pumpExpItems=[];
   btn.disabled=false;btn.innerHTML='☁️ Save & Sync';
+  // Show success with Edit option
+  document.getElementById('saveMsg').innerHTML=`
+    <div style="padding:12px 16px;background:#f0fff4;border:1px solid var(--green);border-radius:var(--r);margin-top:8px">
+      <div style="font-size:13px;font-weight:700;color:var(--green)">✅ Saved & Synced!</div>
+      <div style="font-size:11px;color:var(--ink-light);margin-top:2px">${d.date} · Final Cash: ₹${fmt(d.finalCash)} · Next BF: ₹${fmt(d.finalCash)}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button onclick="editSavedRecord('${d.date}')" style="padding:8px 16px;background:var(--ioc-navy);color:#fff;border:none;border-radius:var(--r);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ui)">✏️ Edit This Record</button>
+        <button onclick="backToModules();draft={};mobilItems=[];depositItems=[];advItems=[];creditSaleItems=[];pumpExpItems=[];" style="padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:var(--r);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ui)">✅ Done</button>
+      </div>
+    </div>`;
+}
+
+function editSavedRecord(date){
+  const rec=cloudData.records.find(r=>r.date===date);
+  if(!rec){alert('Record not found');return;}
+  // Restore full draft
+  Object.assign(draft,JSON.parse(JSON.stringify(rec)));
+  salesDate=date;
+  advItems=[...(rec.advItems||[])];
+  mobilItems=[...(rec.mobilItems||[])];
+  depositItems=[...(rec.depositItems||[])];
+  pumpExpItems=[...(rec.pumpExpItems||[])];
+  creditSaleItems=[...(rec.creditSaleItems||[])];
+  // Set prev closing from record before this date
+  const prevRec=cloudData.records.filter(r=>r.date<date).sort((a,b)=>b.date.localeCompare(a.date))[0];
+  if(prevRec){
+    const pc={};[...NOZZLES_HSD,...NOZZLES_MS].forEach(n=>{pc[n]=prevRec['cl_'+n]||0;});
+    draft._prevClosingOverride=pc;draft._prevBFOverride=prevRec.finalCash||0;
+  }
+  // Go back to step 1 (closing meters) so they can edit everything
+  currentStep=0;renderStepBar();renderSaleStep();
+  window.scrollTo({top:0,behavior:'smooth'});
+  // Show edit warning
+  setTimeout(()=>{
+    const alert=document.createElement('div');
+    alert.style.cssText='position:fixed;top:70px;left:50%;transform:translateX(-50%);background:var(--ioc-red);color:#fff;padding:10px 20px;border-radius:var(--r);font-size:13px;font-weight:700;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.3)';
+    alert.textContent=`✏️ Editing ${date} — all values restored. Make changes and Save & Sync.`;
+    document.body.appendChild(alert);
+    setTimeout(()=>alert.remove(),4000);
+  },300);
 }
 
 // ── MODULE 2: ATTENDANCE (with date picker + add/remove staff) ─────────────────
@@ -2696,70 +2730,81 @@ async function resetAll(){
 
 // ── CALENDAR ──────────────────────────────────────────────────────────────────
 let calYear=new Date().getFullYear(),calMonth=new Date().getMonth();
+
 function renderHistory(){
-  // Always start at current month — if no records this month, go to latest record's month
-  const today=new Date();
-  calYear=today.getFullYear();calMonth=today.getMonth();
+  const now=new Date();let y=now.getFullYear(),m=now.getMonth();
   if(cloudData.records.length){
-    const monthStr=`${calYear}-${String(calMonth+1).padStart(2,'0')}`;
-    const hasThisMonth=cloudData.records.some(r=>r.date.startsWith(monthStr));
-    if(!hasThisMonth){
-      // Go to latest record month
-      const latest=cloudData.records.slice().sort((a,b)=>b.date.localeCompare(a.date))[0];
-      calYear=parseInt(latest.date.slice(0,4));
-      calMonth=parseInt(latest.date.slice(5,7))-1;
+    const mStr=`${y}-${String(m+1).padStart(2,'0')}`;
+    if(!cloudData.records.some(r=>r.date.startsWith(mStr))){
+      const latest=[...cloudData.records].sort((a,b)=>b.date.localeCompare(a.date))[0];
+      y=parseInt(latest.date.slice(0,4));m=parseInt(latest.date.slice(5,7))-1;
     }
   }
-  renderCalendar();
+  calYear=y;calMonth=m;renderCalendar();
 }
+
 function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCalendar();}
 function calNext(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderCalendar();}
 function shortFmt(n){n=Number(n||0);if(n>=100000)return(n/100000).toFixed(1)+'L';if(n>=1000)return(n/1000).toFixed(1)+'K';return n.toFixed(0);}
+
 function renderCalendar(){
   const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
-  document.getElementById('calMonthLabel').textContent=`${MONTHS[calMonth]} ${calYear}`;
+  const lbl=document.getElementById('calMonthLabel');
+  if(lbl)lbl.textContent=`${MONTHS[calMonth]} ${calYear}`;
+
   const monthStr=`${calYear}-${String(calMonth+1).padStart(2,'0')}`;
-  const recMap={};cloudData.records.forEach(r=>{if(r.date.startsWith(monthStr))recMap[r.date]=r;});
+  const recMap={};
+  cloudData.records.forEach(r=>{if(r.date.startsWith(monthStr))recMap[r.date]=r;});
   const mR=Object.values(recMap);
-  document.getElementById('calMonthSummary').innerHTML=mR.length?`
+
+  const sumEl=document.getElementById('calMonthSummary');
+  if(sumEl)sumEl.innerHTML=mR.length?`
     <div class="cum-card"><div class="cum-label">Days</div><div class="cum-val" style="font-size:18px">${mR.length}</div></div>
-    <div class="cum-card"><div class="cum-label">Fuel Sales</div><div class="cum-val" style="font-size:16px">₹${fmt(mR.reduce((a,r)=>a+(r.fuelTotal||0),0))}</div></div>
-    <div class="cum-card"><div class="cum-label">Final Cash</div><div class="cum-val" style="font-size:16px">₹${fmt(mR.reduce((a,r)=>a+(r.finalCash||0),0))}</div></div>`
-    :'<div style="font-size:12px;color:var(--ink-light);padding:4px">No records this month</div>';
-  const firstDay=new Date(calYear,calMonth,1).getDay(),dim=new Date(calYear,calMonth+1,0).getDate(),today=new Date().toISOString().slice(0,10);
+    <div class="cum-card"><div class="cum-label">Fuel Revenue</div><div class="cum-val" style="font-size:15px">₹${fmt(mR.reduce((a,r)=>a+(r.fuelTotal||0),0))}</div></div>
+    <div class="cum-card"><div class="cum-label">Total Cash</div><div class="cum-val" style="font-size:15px">₹${fmt(mR.reduce((a,r)=>a+(r.finalCash||0),0))}</div></div>
+    ${currentRole==='owner'?`<div class="cum-card"><div class="cum-label">Profit</div><div class="cum-val" style="font-size:15px;color:var(--green)">₹${fmt(mR.reduce((a,r)=>a+(r.netProfit||0),0))}</div></div>`:''}
+  `:'<div style="font-size:12px;color:var(--ink-light);padding:4px">No records this month — use ‹ to navigate</div>';
+
+  const today=new Date().toISOString().slice(0,10);
+  const firstDay=new Date(calYear,calMonth,1).getDay();
+  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
   let cells='';
-  for(let i=0;i<firstDay;i++)cells+=`<div style="min-height:68px"></div>`;
-  for(let d=1;d<=dim;d++){
+  for(let i=0;i<firstDay;i++)cells+=`<div style="min-height:62px"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
     const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const rec=recMap[ds],isToday=ds===today;
-    cells+=`<div style="min-height:68px;border-radius:var(--r);border:1px solid ${isToday?'var(--ioc-red)':rec?'#A0AFDC':'var(--ioc-border)'};padding:5px 6px;cursor:${rec?'pointer':'default'};background:${isToday?'var(--ioc-red-light)':rec?'#fff':'transparent'};opacity:${rec||isToday?1:.4};position:relative" onclick="${rec?`showHistDetailByDate('${ds}')`:''}" title="${rec?'₹'+fmt(rec.finalCash):'No record'}">
+    const rec=recMap[ds],isToday=ds===today,profit=rec?(rec.netProfit||0):0;
+    const bg=rec?(profit>=0?'rgba(29,107,58,0.1)':'rgba(208,30,30,0.08)'):(isToday?'var(--ioc-red-light)':'transparent');
+    const border=isToday?'var(--ioc-red)':rec?(profit>=0?'rgba(29,107,58,0.5)':'rgba(208,30,30,0.4)'):'var(--ioc-border)';
+    cells+=`<div onclick="${rec?`showHistDetailByDate('${ds}')`:''}" style="min-height:62px;border-radius:6px;border:1.5px solid ${border};padding:5px;cursor:${rec?'pointer':'default'};background:${bg};position:relative">
       <div style="font-size:11px;font-weight:700;color:${isToday?'var(--ioc-red)':rec?'var(--ioc-navy)':'var(--ink-light)'}">${d}</div>
-      ${rec?`<div style="font-size:9px;font-weight:700;color:var(--green)">₹${shortFmt(rec.finalCash)}</div><div style="font-size:9px;color:var(--ink-light)">${(rec.hsdNet||0).toFixed(0)}+${(rec.msNet||0).toFixed(0)}L</div><div style="position:absolute;top:5px;right:6px;width:6px;height:6px;border-radius:50%;background:var(--green)"></div>`:''}
+      ${rec?`<div style="font-size:9px;font-weight:700;color:${profit>=0?'var(--green)':'var(--ioc-red)'}">₹${shortFmt(rec.finalCash)}</div><div style="font-size:8px;color:var(--ink-light)">${(rec.hsdNet||0).toFixed(0)}+${(rec.msNet||0).toFixed(0)}L</div><div style="position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:${profit>=0?'var(--green)':'var(--ioc-red)'}"></div>`:''}
     </div>`;
   }
-  document.getElementById('calGrid').innerHTML=cells;
-  document.getElementById('historyDetail').style.display='none';
+  const grid=document.getElementById('calGrid');if(grid)grid.innerHTML=cells;
+  const hd=document.getElementById('historyDetail');if(hd)hd.style.display='none';
 
-  // Show record list below calendar for easy access
   const listEl=document.getElementById('calRecordList');
   if(listEl){
-    const sortedRecs=mR.slice().sort((a,b)=>b.date.localeCompare(a.date));
-    listEl.innerHTML=sortedRecs.length?sortedRecs.map((r,i)=>`
+    const sorted=[...mR].sort((a,b)=>b.date.localeCompare(a.date));
+    listEl.innerHTML=sorted.length?sorted.map(r=>`
       <div onclick="showHistDetailByDate('${r.date}')" class="hist-item" style="cursor:pointer">
-        <div>
-          <div class="hist-date">${new Date(r.date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'})}</div>
-          <div class="hist-sub">HSD: ${(r.hsdNet||0).toFixed(0)}L · MS: ${(r.msNet||0).toFixed(0)}L · Paytm: ₹${fmt(r.paytmTotal||0)}</div>
+        <div style="flex:1">
+          <div class="hist-date">${new Date(r.date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</div>
+          <div class="hist-sub">HSD ${(r.hsdNet||0).toFixed(1)}L · MS ${(r.msNet||0).toFixed(1)}L · Paytm ₹${fmt(r.paytmTotal||0)} · BF ₹${fmt(r.finalCash)}</div>
         </div>
-        <div style="text-align:right">
-          <div style="font-size:11px;color:var(--ink-light)">Final Cash</div>
-          <div style="font-size:15px;font-weight:700;color:var(--ioc-navy)">₹${fmt(r.finalCash)}</div>
-          ${currentRole==='owner'?`<div style="font-size:11px;color:var(--green)">P: ₹${fmt(r.netProfit||0)}</div>`:''}
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:16px;font-weight:700;color:var(--ioc-navy)">₹${fmt(r.finalCash)}</div>
+          ${currentRole==='owner'?`<div style="font-size:11px;color:${(r.netProfit||0)>=0?'var(--green)':'var(--ioc-red)'}">Profit ₹${fmt(r.netProfit||0)}</div>`:''}
         </div>
       </div>`).join('')
-    :'<div style="text-align:center;padding:20px;color:var(--ink-light);font-size:13px">No records for this month.<br>Use ‹ to go to previous months.</div>';
+    :'<div style="text-align:center;padding:20px;color:var(--ink-light)">No records this month</div>';
   }
 }
-function showHistDetailByDate(ds){const d=cloudData.records.find(r=>r.date===ds);if(d)showHistDetail(cloudData.records.indexOf(d));}
+
+function showHistDetailByDate(ds){
+  const d=cloudData.records.find(r=>r.date===ds);
+  if(d)showHistDetail(cloudData.records.indexOf(d));
+}
 function showHistDetail(i){
   const d=cloudData.records[i];if(!d)return;
   const det=document.getElementById('historyDetail');det.style.display='';
