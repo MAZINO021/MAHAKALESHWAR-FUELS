@@ -490,9 +490,12 @@ async function loadCloud(){
     const test=await cloudGet(STORE_KEY_TESTING);if(test)testingData=test;
     const depO=await cloudGet(DEPOSIT_KEY);if(depO)ownerDeposits=depO;
     syncStatus('ok','☁️ Firebase connected');
-    // If history tab is visible, render it now that data is loaded
+    // Force render history if that tab is open
     const hv=document.getElementById('historyView');
-    if(hv&&hv.style.display!=='none')renderHistory();
+    if(hv&&hv.style.display!=='none'){
+      calYear=0;// reset so renderHistory recalculates
+      renderHistory();
+    }
   }catch(e){syncStatus('err','Connection error — using local');}
 }
 
@@ -564,24 +567,8 @@ function setMode(m){
   if(document.getElementById(map[m]))document.getElementById(map[m]).style.display='';
   if(document.getElementById(bmap[m]))document.getElementById(bmap[m]).classList.add('active');
   if(m==='manager')renderModuleSelect();
-  if(m==='history'){
-    const lbl=document.getElementById('calMonthLabel');
-    if(lbl)lbl.textContent='Loading…';
-    // Wait for Firebase data - retry up to 5 times
-    let attempts=0;
-    function tryRender(){
-      attempts++;
-      if(cloudData.records.length>0){
-        renderHistory();
-      } else if(attempts<10){
-        setTimeout(tryRender,500);
-      } else {
-        // Force reload from Firebase then render
-        loadCloud().then(()=>renderHistory());
-      }
-    }
-    setTimeout(tryRender,200);
-  }
+  if(m==='history'){renderHistory();}
+
   if(m==='owner')renderOwnerReport();
   if(m==='query')initQuery();
 }
@@ -1622,6 +1609,9 @@ function showCreditParty(name,pObj){
 
 // ── OWNER REPORT ──────────────────────────────────────────────────────────────
 function renderOwnerReport(){
+  // Always reset to main dashboard view
+  const tc=document.getElementById('ownerTabContent');
+  if(tc)tc.innerHTML='';
   document.getElementById('ownerReport').innerHTML=`
   ${(()=>{
     const recs=cloudData.records;
@@ -2753,29 +2743,70 @@ async function resetAll(){
 let calYear=new Date().getFullYear(),calMonth=new Date().getMonth();
 
 function renderHistory(){
-  const now=new Date();let y=now.getFullYear(),m=now.getMonth();
-
-  if(!cloudData.records.length){
-    // No data yet - show loading with refresh button
-    const lbl=document.getElementById('calMonthLabel');
-    if(lbl)lbl.textContent='Loading data…';
-    const grid=document.getElementById('calGrid');
-    if(grid)grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--ink-light)"><div style="font-size:24px;margin-bottom:10px">🔄</div><div style="font-size:13px;margin-bottom:14px">Loading records from Firebase…</div><button onclick="loadCloud().then(()=>renderHistory())" class="btn-primary" style="font-size:12px">Refresh Data</button></div>';
-    const listEl=document.getElementById('calRecordList');
-    if(listEl)listEl.innerHTML='<div style="text-align:center;padding:16px;color:var(--ink-light);font-size:13px">No records loaded yet. Click Refresh.</div>';
-    return;
+  if(cloudData.records.length){
+    const l=[...cloudData.records].sort((a,b)=>b.date.localeCompare(a.date))[0];
+    calYear=parseInt(l.date.slice(0,4));
+    calMonth=parseInt(l.date.slice(5,7))-1;
   }
-
-  // Find best month to show
-  const thisMonthStr=`${y}-${String(m+1).padStart(2,'0')}`;
-  const hasNow=cloudData.records.some(r=>r.date.startsWith(thisMonthStr));
-  if(!hasNow){
-    const latest=[...cloudData.records].sort((a,b)=>b.date.localeCompare(a.date))[0];
-    y=parseInt(latest.date.slice(0,4));
-    m=parseInt(latest.date.slice(5,7))-1;
-  }
-  calYear=y;calMonth=m;
   renderCalendar();
+}
+
+function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCalendar();}
+function calNext(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderCalendar();}
+function shortFmt(n){n=Number(n||0);if(n>=100000)return(n/100000).toFixed(1)+'L';if(n>=1000)return(n/1000).toFixed(1)+'K';return n.toFixed(0);}
+
+function renderCalendar(){
+  const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const lbl=document.getElementById('calMonthLabel');
+  if(lbl)lbl.textContent=`${MONTHS[calMonth]} ${calYear}`;
+  const monthStr=`${calYear}-${String(calMonth+1).padStart(2,'0')}`;
+  const recMap={};cloudData.records.forEach(r=>{if(r.date&&r.date.startsWith(monthStr))recMap[r.date]=r;});
+  const mR=Object.values(recMap);
+  const sumEl=document.getElementById('calMonthSummary');
+  if(sumEl)sumEl.innerHTML=mR.length?`
+    <div class="cum-card"><div class="cum-label">Days</div><div class="cum-val" style="font-size:18px">${mR.length}</div></div>
+    <div class="cum-card"><div class="cum-label">Fuel Revenue</div><div class="cum-val" style="font-size:15px">₹${fmt(mR.reduce((a,r)=>a+(r.fuelTotal||0),0))}</div></div>
+    <div class="cum-card"><div class="cum-label">Total Cash</div><div class="cum-val" style="font-size:15px">₹${fmt(mR.reduce((a,r)=>a+(r.finalCash||0),0))}</div></div>
+    ${currentRole==='owner'?`<div class="cum-card"><div class="cum-label">Profit</div><div class="cum-val" style="font-size:15px;color:var(--green)">₹${fmt(mR.reduce((a,r)=>a+(r.netProfit||0),0))}</div></div>`:''}
+  `:'<div style="font-size:12px;color:var(--ink-light);padding:4px">No records this month</div>';
+  const today=new Date().toISOString().slice(0,10);
+  const firstDay=new Date(calYear,calMonth,1).getDay();
+  const dim=new Date(calYear,calMonth+1,0).getDate();
+  let cells='';
+  for(let i=0;i<firstDay;i++)cells+=`<div style="min-height:62px"></div>`;
+  for(let d=1;d<=dim;d++){
+    const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const rec=recMap[ds],isToday=ds===today,profit=rec?(rec.netProfit||0):0;
+    const bg=isToday?'var(--ioc-red-light)':rec?(profit>=0?'rgba(29,107,58,0.1)':'rgba(208,30,30,0.08)'):'transparent';
+    const border=isToday?'var(--ioc-red)':rec?(profit>=0?'rgba(29,107,58,0.5)':'rgba(208,30,30,0.4)'):'var(--ioc-border)';
+    cells+=`<div onclick="${rec?`showHistDetailByDate('${ds}')`:''}" style="min-height:62px;border-radius:6px;border:1.5px solid ${border};padding:5px;cursor:${rec?'pointer':'default'};background:${bg};position:relative">
+      <div style="font-size:11px;font-weight:700;color:${isToday?'var(--ioc-red)':rec?'var(--ioc-navy)':'var(--ink-light)'}">${d}</div>
+      ${rec?`<div style="font-size:9px;font-weight:700;color:${profit>=0?'var(--green)':'var(--ioc-red)'}">₹${shortFmt(rec.finalCash)}</div><div style="font-size:8px;color:var(--ink-light)">${(rec.hsdNet||0).toFixed(0)}+${(rec.msNet||0).toFixed(0)}L</div><div style="position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:${profit>=0?'var(--green)':'var(--ioc-red)'}"></div>`:''}
+    </div>`;
+  }
+  const grid=document.getElementById('calGrid');if(grid)grid.innerHTML=cells;
+  const hd=document.getElementById('historyDetail');if(hd)hd.style.display='none';
+  const listEl=document.getElementById('calRecordList');
+  if(listEl){
+    const sorted=[...mR].sort((a,b)=>b.date.localeCompare(a.date));
+    listEl.innerHTML=sorted.length?sorted.map(r=>`
+      <div onclick="showHistDetailByDate('${r.date}')" class="hist-item" style="cursor:pointer">
+        <div style="flex:1">
+          <div class="hist-date">${new Date(r.date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</div>
+          <div class="hist-sub">HSD ${(r.hsdNet||0).toFixed(1)}L · MS ${(r.msNet||0).toFixed(1)}L · Cash ₹${fmt(r.finalCash)}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:16px;font-weight:700;color:var(--ioc-navy)">₹${fmt(r.finalCash)}</div>
+          ${currentRole==='owner'?`<div style="font-size:11px;color:${(r.netProfit||0)>=0?'var(--green)':'var(--ioc-red)'}">P: ₹${fmt(r.netProfit||0)}</div>`:''}
+        </div>
+      </div>`).join('')
+    :'<div style="text-align:center;padding:16px;color:var(--ink-light)">No records this month</div>';
+  }
+}
+
+function showHistDetailByDate(ds){
+  const d=cloudData.records.find(r=>r.date===ds);
+  if(d)showHistDetail(cloudData.records.indexOf(d));
 }
 
 function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCalendar();}
