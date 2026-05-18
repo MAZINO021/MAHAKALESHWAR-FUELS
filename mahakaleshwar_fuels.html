@@ -614,21 +614,29 @@ function renderSalesDatePicker(){
 }
 function confirmSalesDate(){
   salesDate=document.getElementById('salesDateInput').value||todayKey0();
-  // Load opening meters from the record just before this date
-  const prevRec=cloudData.records.filter(r=>r.date<salesDate).sort((a,b)=>b.date.localeCompare(a.date))[0];
+
+  // Sort all records by date descending and find the most recent one BEFORE salesDate
+  const prevRec=cloudData.records
+    .filter(r=>r.date<salesDate)
+    .sort((a,b)=>b.date.localeCompare(a.date))[0];
+
   if(prevRec){
-    // Previous record exists → use its closing as today's opening
+    // Use that date's closing meters as this date's opening
     const prevClose={};
-    [...NOZZLES_HSD,...NOZZLES_MS].forEach(n=>{prevClose[n]=prevRec['cl_'+n]||0;});
+    [...NOZZLES_HSD,...NOZZLES_MS].forEach(n=>{
+      prevClose[n]=prevRec['cl_'+n]||0;
+    });
     draft._prevClosingOverride=prevClose;
     draft._prevBFOverride=prevRec.finalCash||0;
+    console.log(`Opening meters for ${salesDate} loaded from ${prevRec.date} closing`);
   } else {
-    // No previous record → this is Day 1. Use Day 0 meters as opening base
+    // No previous record — use Day 0 base meters
     const day0={};
     NOZZLES_HSD.forEach((n,i)=>{day0[n]=HSD_DAY0[i]||0;});
     NOZZLES_MS.forEach((n,i)=>{day0[n]=MS_DAY0[i]||0;});
     draft._prevClosingOverride=day0;
     draft._prevBFOverride=0;
+    console.log(`Opening meters for ${salesDate} loaded from Day 0 base`);
   }
   currentStep=0;renderStepBar();renderSaleStep();
 }
@@ -644,10 +652,11 @@ function renderSaleStep(){renderStepBar();({closing:renderClosing,testing:render
 
 function renderClosing(){
   const prev=draft._prevClosingOverride||cloudData.prevClosing;
+  const prevDate=cloudData.records.filter(r=>r.date<salesDate).sort((a,b)=>b.date.localeCompare(a.date))[0]?.date||'Day 0';
   const hf=NOZZLES_HSD.map(n=>`<div class="field"><div class="lbl">${n}</div><div class="sublbl">Opening: ${prev[n]||0}</div><input type="number" id="cl_${n}" value="${draft['cl_'+n]||''}" placeholder="${prev[n]||0}" step="0.01"></div>`).join('');
   const mf=NOZZLES_MS.map(n=>`<div class="field"><div class="lbl">${n}</div><div class="sublbl">Opening: ${prev[n]||0}</div><input type="number" id="cl_${n}" value="${draft['cl_'+n]||''}" placeholder="${prev[n]||0}" step="0.01"></div>`).join('');
   document.getElementById('stepContent').innerHTML=`
-    <div class="alert-info">Date: <b>${salesDate}</b> — Opening meters loaded from previous day's closing.</div>
+    <div class="alert-info">📅 Date: <b>${salesDate}</b> — Opening meters from: <b>${prevDate}</b> closing.</div>
     <div class="card"><div class="card-title"><span class="tag tag-hsd">HSD</span> H1–H8 Closing Meters</div><div class="grid4">${hf}</div></div>
     <div class="card"><div class="card-title"><span class="tag tag-ms">MS</span> M1–M4 Closing Meters</div><div class="grid4">${mf}</div></div>
     <div id="saleCalc" class="card" style="display:none"><div class="card-title">📊 Gross Sales</div><div class="grid2" id="sci"></div></div>
@@ -875,7 +884,12 @@ async function confirmSave(){
   (d.pumpExpItems||[]).forEach(x=>{c.expCats=c.expCats||{};c.expCats[x.name]=(c.expCats[x.name]||0)+x.amt;});
   cloudData.prevBF=d.finalCash;
   const nc={};[...NOZZLES_HSD,...NOZZLES_MS].forEach(n=>{nc[n]=d['cl_'+n]||cloudData.prevClosing[n]||0;});
-  cloudData.prevClosing=nc;
+  // Only update prevClosing if this date is the latest in all records
+  const latestDate=cloudData.records.reduce((a,r)=>r.date>a?r.date:a,'');
+  if(!latestDate||d.date>=latestDate){
+    cloudData.prevClosing=nc;
+    cloudData.prevBF=d.finalCash;
+  }
   cloudData.records=cloudData.records.filter(r=>r.date!==d.date);cloudData.records.unshift({...d,savedAt:new Date().toISOString()});
   await saveCloud();
   document.getElementById('saveMsg').textContent='✅ Saved! Tomorrow BF = ₹'+fmt(d.finalCash);
