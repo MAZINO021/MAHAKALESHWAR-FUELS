@@ -661,17 +661,9 @@ function calcSales(){
   draft.hsdGross=hg;draft.msGross=mg;
   document.getElementById('saleCalc').style.display='';
   document.getElementById('sci').innerHTML=`<div><div style="font-size:11px;font-weight:700;color:var(--ioc-navy);margin-bottom:8px">HSD: ${fmtL(hg)}</div>${hr}</div><div><div style="font-size:11px;font-weight:700;color:var(--ioc-red);margin-bottom:8px">MS: ${fmtL(mg)}</div>${mr}</div>`;
-  document.querySelector('.btn-row').innerHTML=`<button class="btn-primary" onclick="nextStep()">Next →</button>`;
+  document.querySelector('.btn-row').innerHTML=`<button class="btn-primary" onclick="nextStep()">Next →</button><button class="btn-secondary" onclick="calcSales()" style="margin-left:8px">🔄 Recalculate</button>`;
 }
-function calcSales(){
-  const prev=cloudData.prevClosing;let hg=0,mg=0,hr='',mr='';
-  NOZZLES_HSD.forEach(n=>{const o=parseFloat(prev[n])||0,c=gv('cl_'+n)||o,s=Math.max(0,c-o);draft['cl_'+n]=c;draft['open_'+n]=o;draft['sale_'+n]=s;hg+=s;hr+=`<div class="calc-row"><span class="calc-lbl">${n}: ${o.toFixed(2)}→${c.toFixed(2)}</span><span class="calc-val">${fmtL(s)}</span></div>`;});
-  NOZZLES_MS.forEach(n=>{const o=parseFloat(prev[n])||0,c=gv('cl_'+n)||o,s=Math.max(0,c-o);draft['cl_'+n]=c;draft['open_'+n]=o;draft['sale_'+n]=s;mg+=s;mr+=`<div class="calc-row"><span class="calc-lbl">${n}: ${o.toFixed(2)}→${c.toFixed(2)}</span><span class="calc-val">${fmtL(s)}</span></div>`;});
-  draft.hsdGross=hg;draft.msGross=mg;
-  document.getElementById('saleCalc').style.display='';
-  document.getElementById('sci').innerHTML=`<div><div style="font-size:11px;font-weight:700;color:var(--ioc-navy);margin-bottom:8px">HSD: ${fmtL(hg)}</div>${hr}</div><div><div style="font-size:11px;font-weight:700;color:var(--ioc-red);margin-bottom:8px">MS: ${fmtL(mg)}</div>${mr}</div>`;
-  document.querySelector('.btn-row').innerHTML=`<button class="btn-primary" onclick="nextStep()">Next →</button>`;
-}
+
 function renderSaleTestingStep(){
   document.getElementById('stepContent').innerHTML=`
     <div class="card"><div class="card-title">🧪 Testing Deductions</div>
@@ -687,7 +679,7 @@ function calcNet(){
   draft.hsdTest=gv('hsdTest');draft.msTest=gv('msTest');draft.hsdNet=draft.hsdGross-draft.hsdTest;draft.msNet=draft.msGross-draft.msTest;
   document.getElementById('netCalc').style.display='';
   document.getElementById('nci').innerHTML=`<div class="calc-row"><span class="calc-lbl">HSD Gross</span><span class="calc-val">${fmtL(draft.hsdGross)}</span></div><div class="calc-row"><span class="calc-lbl">HSD Test</span><span class="calc-val" style="color:var(--ioc-red)">−${fmtL(draft.hsdTest)}</span></div><div class="calc-row"><span class="calc-lbl"><b>HSD Net</b></span><span class="calc-val">${fmtL(draft.hsdNet)}</span></div><div style="height:6px"></div><div class="calc-row"><span class="calc-lbl">MS Gross</span><span class="calc-val">${fmtL(draft.msGross)}</span></div><div class="calc-row"><span class="calc-lbl">MS Test</span><span class="calc-val" style="color:var(--ioc-red)">−${fmtL(draft.msTest)}</span></div><div class="calc-row"><span class="calc-lbl"><b>MS Net</b></span><span class="calc-val">${fmtL(draft.msNet)}</span></div>`;
-  document.querySelector('.btn-row').innerHTML=`<button class="btn-primary" onclick="nextStep()">Next →</button>`;
+  document.querySelector('.btn-row').innerHTML=`<button class="btn-primary" onclick="nextStep()">Next →</button><button class="btn-secondary" onclick="calcNet()" style="margin-left:8px">🔄 Recalculate</button>`;
 }
 function renderRSP(){
   document.getElementById('stepContent').innerHTML=`<div class="card"><div class="card-title">💰 RSP</div><div class="grid2"><div class="field"><div class="lbl">HSD RSP (₹/L)</div><input type="number" id="hsdRsp" value="${draft.hsdRsp||''}" placeholder="91.80" step="0.01"></div><div class="field"><div class="lbl">MS RSP (₹/L)</div><input type="number" id="msRsp" value="${draft.msRsp||''}" placeholder="104.50" step="0.01"></div></div></div><div id="amtCalc" style="display:none" class="card"><div class="card-title">💵 Fuel Amounts</div><div id="aci"></div></div><div class="btn-row"><button class="btn-primary" onclick="calcAmounts()">Calculate →</button></div>`;
@@ -696,7 +688,7 @@ function calcAmounts(){
   draft.hsdRsp=gv('hsdRsp');draft.msRsp=gv('msRsp');draft.hsdAmt=draft.hsdNet*draft.hsdRsp;draft.msAmt=draft.msNet*draft.msRsp;draft.fuelTotal=draft.hsdAmt+draft.msAmt;
   document.getElementById('amtCalc').style.display='';
   document.getElementById('aci').innerHTML=`<div class="calc-row"><span class="calc-lbl">HSD: ${fmtL(draft.hsdNet)} × ₹${draft.hsdRsp}</span><span class="calc-val">₹${fmt(draft.hsdAmt)}</span></div><div class="calc-row"><span class="calc-lbl">MS: ${fmtL(draft.msNet)} × ₹${draft.msRsp}</span><span class="calc-val">₹${fmt(draft.msAmt)}</span></div><div class="calc-row"><span class="calc-lbl"><b>Fuel Total</b></span><span class="calc-val" style="font-size:15px">₹${fmt(draft.fuelTotal)}</span></div>`;
-  document.querySelector('.btn-row').innerHTML=`<button class="btn-primary" onclick="nextStep()">Next →</button>`;
+  document.querySelector('.btn-row').innerHTML=`<button class="btn-primary" onclick="nextStep()">Next →</button><button class="btn-secondary" onclick="calcAmounts()" style="margin-left:8px">🔄 Recalculate</button>`;
 }
 function renderExtras(){
   const bf=draft._prevBFOverride!==null&&draft._prevBFOverride!==undefined?draft._prevBFOverride:cloudData.prevBF||0;
@@ -723,7 +715,17 @@ function renderExpenses(){
   document.getElementById('stepContent').innerHTML=`
     <div class="card"><div class="card-title">🧾 Fixed</div><div class="grid2"><div class="field"><div class="lbl">OTP (₹)</div><input type="number" id="otp" value="${draft.otp||0}" step="0.01"></div><div class="field"><div class="lbl">Acct Transfer (₹)</div><input type="number" id="acctTr" value="${draft.acctTr||0}" step="0.01"></div><div class="field"><div class="lbl">HO / Bank (₹)</div><input type="number" id="hoBank" value="${draft.hoBank||0}" step="0.01"></div></div></div>
     <div class="card"><div class="card-title"><span class="tag tag-exp">ADV</span> Advances</div><div class="grid2" style="margin-bottom:8px"><div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="advAmt" step="0.01"></div><div class="field"><div class="lbl">Employee</div><input type="text" id="advName" placeholder="Name" list="staffList"><datalist id="staffList">${staffList.map(s=>`<option value="${s}">`).join('')}</datalist></div></div><button class="btn-secondary" style="margin-bottom:8px" onclick="addAdv()">+ Add</button><div id="advList"></div></div>
-    <div class="card"><div class="card-title">💳 Credit Sales</div><div class="grid2" style="margin-bottom:8px"><div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="csAmt" step="0.01"></div><div class="field"><div class="lbl">Note</div><input type="text" id="csName"></div></div><button class="btn-secondary" style="margin-bottom:8px" onclick="addCS()">+ Add</button><div id="csList"></div></div>
+    <div class="card"><div class="card-title">💳 Credit Sales <span style="font-size:11px;color:var(--ioc-red);font-weight:400">(subtracted from final cash)</span></div>
+      <div class="grid2" style="margin-bottom:8px">
+        <div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="csAmt" step="0.01" placeholder="0"></div>
+        <div class="field"><div class="lbl">Party Name</div>
+          <input type="text" id="csName" placeholder="Party name" list="csPartyList">
+          <datalist id="csPartyList">${[...new Set(creditData.map(t=>t.party))].map(p=>`<option value="${p}">`).join('')}</datalist>
+        </div>
+      </div>
+      <button class="btn-secondary" style="margin-bottom:8px" onclick="addCS()">+ Add</button>
+      <div id="csList"></div>
+    </div>
     <div class="card"><div class="card-title">🔧 Pump Expense</div><div class="grid2" style="margin-bottom:8px"><div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="expAmt" step="0.01"></div><div class="field"><div class="lbl">Category</div><input type="text" id="expName" placeholder="Electricity…"></div></div><button class="btn-secondary" style="margin-bottom:8px" onclick="addExp()">+ Add</button><div id="expList"></div></div>
     <div class="card"><div class="card-title">🚛 Tanker Expense</div><div class="grid2"><div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="tanker" value="${draft.tanker||0}" step="0.01"></div><div class="field"><div class="lbl">Note</div><input type="text" id="tankerName" value="${draft.tankerName||''}" placeholder="Loading charges"></div></div></div>
     <div class="btn-row"><button class="btn-primary" onclick="saveExpenses()">Generate Report →</button></div>`;
@@ -741,40 +743,126 @@ function renderExpList(){const el=document.getElementById('expList');if(!el)retu
 function saveExpenses(){
   draft.otp=gv('otp');draft.tanker=gv('tanker');draft.tankerName=gs('tankerName');draft.acctTr=gv('acctTr');draft.hoBank=gv('hoBank');
   draft.advItems=[...advItems];draft.creditSaleItems=[...creditSaleItems];draft.pumpExpItems=[...pumpExpItems];
-  draft.advTotal=advItems.reduce((a,x)=>a+x.amt,0);draft.csTotal=creditSaleItems.reduce((a,x)=>a+x.amt,0);draft.pumpExpTotal=pumpExpItems.reduce((a,x)=>a+x.amt,0);
+  draft.advTotal=advItems.reduce((a,x)=>a+x.amt,0);
+  draft.csTotal=creditSaleItems.reduce((a,x)=>a+x.amt,0);
+  draft.pumpExpTotal=pumpExpItems.reduce((a,x)=>a+x.amt,0);
+  // Gross = Fuel + BF + Mobil + Deposit (NO rounding — exact float)
   draft.grossTotal=draft.fuelTotal+(draft.bf||0)+(draft.mobilTotal||0)+(draft.depositTotal||0);
+  // Deductions include credit sales (credit is subtracted from cash)
   const td=draft.paytmTotal+draft.otp+draft.tanker+draft.advTotal+draft.csTotal+draft.pumpExpTotal+draft.acctTr+draft.hoBank;
-  draft.totalDeductions=td;draft.finalCash=draft.grossTotal-td;
-  draft.hsdMarginAmt=draft.hsdNet*HSD_MARGIN;draft.msMarginAmt=draft.msNet*MS_MARGIN;
+  draft.totalDeductions=td;
+  // Final Cash = Gross - All Deductions (exact, no rounding)
+  draft.finalCash=draft.grossTotal-td;
+  // Profit calculations (exact)
+  draft.hsdMarginAmt=draft.hsdNet*HSD_MARGIN;
+  draft.msMarginAmt=draft.msNet*MS_MARGIN;
   draft.grossProfit=draft.hsdMarginAmt+draft.msMarginAmt+(draft.mobilTotal||0);
   draft.netProfit=draft.grossProfit-draft.pumpExpTotal-draft.tanker-draft.advTotal;
   draft.date=salesDate;nextStep();
 }
 function renderReport(){
   const d=draft;
-  let nHtml='';[...NOZZLES_HSD,...NOZZLES_MS].forEach(n=>{const f=NOZZLES_HSD.includes(n)?'HSD':'MS',rsp=f==='HSD'?d.hsdRsp:d.msRsp,sale=d['sale_'+n]||0;if(sale>0)nHtml+=`<tr><td>${n}</td><td><span class="tag ${f==='HSD'?'tag-hsd':'tag-ms'}">${f}</span></td><td>${(d['open_'+n]||0).toFixed(2)}</td><td>${(d['cl_'+n]||0).toFixed(2)}</td><td class="right">${fmtL(sale)}</td><td class="right">₹${fmt(sale*rsp)}</td></tr>`;});
-  const mHtml=(d.mobilItems||[]).map(m=>`<tr><td>${m.name}</td><td>${m.qty||'—'}</td><td class="right">₹${fmt(m.amt)}</td></tr>`).join('');
-  const advHtml=(d.advItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('');
-  const eHtml=(d.pumpExpItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('');
+  // Nozzle table — ALL nozzles even zero
+  let hNozzles='',mNozzles='';
+  NOZZLES_HSD.forEach(n=>{const o=d['open_'+n]||0,c=d['cl_'+n]||0,s=d['sale_'+n]||0;hNozzles+=`<tr><td>${n}</td><td>${o.toFixed(2)}</td><td>${c.toFixed(2)}</td><td class="right">${s.toFixed(2)} L</td><td class="right">₹${fmt(s*d.hsdRsp)}</td></tr>`;});
+  NOZZLES_MS.forEach(n=>{const o=d['open_'+n]||0,c=d['cl_'+n]||0,s=d['sale_'+n]||0;mNozzles+=`<tr><td>${n}</td><td>${o.toFixed(2)}</td><td>${c.toFixed(2)}</td><td class="right">${s.toFixed(2)} L</td><td class="right">₹${fmt(s*d.msRsp)}</td></tr>`;});
+  // Mobil items
+  const mHtml=(d.mobilItems||[]).length?`<div class="report-section"><div class="report-section-title">🔧 Mobil Sales</div><table class="rtable"><thead><tr><th>Product</th><th>Qty</th><th>Amount</th></tr></thead><tbody>${(d.mobilItems||[]).map(m=>`<tr><td>${m.name}</td><td>${m.qty||'—'}</td><td class="right">₹${fmt(m.amt)}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="2"><b>Total Mobil</b></td><td class="right"><b>₹${fmt(d.mobilTotal)}</b></td></tr></tfoot></table></div>`:'';
+  // Advances — each person
+  const advHtml=(d.advItems||[]).length?`<div class="report-section"><div class="report-section-title">👷 Advances Given</div><table class="rtable"><thead><tr><th>Employee</th><th>Amount</th></tr></thead><tbody>${(d.advItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('')}</tbody><tfoot><tr><td><b>Total</b></td><td class="right"><b>₹${fmt(d.advTotal)}</b></td></tr></tfoot></table></div>`:'';
+  // Credit Sales — each party
+  const csHtml=(d.creditSaleItems||[]).length?`<div class="report-section"><div class="report-section-title" style="color:var(--ioc-red)">💳 Credit Sales <small style="font-weight:400;font-size:11px">(deducted from cash)</small></div><table class="rtable"><thead><tr><th>Party</th><th>Amount</th></tr></thead><tbody>${(d.creditSaleItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right" style="color:var(--ioc-red)">₹${fmt(x.amt)}</td></tr>`).join('')}</tbody><tfoot><tr><td><b>Total Credit</b></td><td class="right" style="color:var(--ioc-red)"><b>₹${fmt(d.csTotal)}</b></td></tr></tfoot></table></div>`:'';
+  // Pump Expenses — each item
+  const eHtml=(d.pumpExpItems||[]).length?`<div class="report-section"><div class="report-section-title">🧾 Pump Expenses</div><table class="rtable"><thead><tr><th>Category</th><th>Amount</th></tr></thead><tbody>${(d.pumpExpItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('')}</tbody><tfoot><tr><td><b>Total</b></td><td class="right"><b>₹${fmt(d.pumpExpTotal)}</b></td></tr></tfoot></table></div>`:'';
+  // Deposit items
+  const depHtml=(d.depositItems||[]).length?`<div class="report-section"><div class="report-section-title">💵 Deposits</div><table class="rtable"><thead><tr><th>Party</th><th>Amount</th></tr></thead><tbody>${(d.depositItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('')}</tbody></table></div>`:'';
+
   document.getElementById('stepContent').innerHTML=`
   <div class="report">
-    <div class="report-header"><div><div class="report-title">Mahakaleshwar Fuels</div><div class="report-sub">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}</div></div><div style="text-align:right"><div style="font-size:10px;color:rgba(255,255,255,.4)">Final Cash</div><div style="font-family:var(--font);font-size:22px;font-weight:700;color:#fff">₹${fmt(d.finalCash)}</div></div></div>
-    <div class="report-section"><div class="report-section-title">Nozzle Sales</div><div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Nozzle</th><th>Fuel</th><th>Open</th><th>Close</th><th>Sale(L)</th><th>Amount</th></tr></thead><tbody>${nHtml}</tbody></table></div></div>
-    <div class="report-section">
-      <div class="summary-row"><span class="summary-lbl">HSD ${fmtL(d.hsdNet)} × ₹${d.hsdRsp}</span><span class="summary-val">₹${fmt(d.hsdAmt)}</span></div>
-      <div class="summary-row"><span class="summary-lbl">MS ${fmtL(d.msNet)} × ₹${d.msRsp}</span><span class="summary-val">₹${fmt(d.msAmt)}</span></div>
-      <div class="summary-row"><span class="summary-lbl">Fuel Total</span><span class="summary-val">₹${fmt(d.fuelTotal)}</span></div>
-      <div class="summary-row"><span class="summary-lbl">BF + Mobil + Deposit</span><span class="summary-val">₹${fmt((d.bf||0)+(d.mobilTotal||0)+(d.depositTotal||0))}</span></div>
-      <div class="summary-row"><span class="summary-lbl"><b>Gross Total</b></span><span class="summary-val" style="color:var(--ioc-navy)">₹${fmt(d.grossTotal)}</span></div>
-      <div class="summary-row"><span class="summary-lbl">Total Deductions</span><span class="summary-val" style="color:var(--ioc-red)">₹${fmt(d.totalDeductions)}</span></div>
-      <div class="summary-row"><span class="summary-lbl"><b>Final Cash</b></span><span class="summary-val" style="color:var(--green);font-size:15px">₹${fmt(d.finalCash)}</span></div>
+    <!-- HEADER -->
+    <div class="report-header">
+      <div>
+        <div class="report-title">Mahakaleshwar Fuels</div>
+        <div class="report-sub">Indian Oil Corporation — Daily Reckoning</div>
+        <div class="report-sub">📅 ${salesDate}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:10px;color:rgba(255,255,255,.5)">Final Cash in Hand</div>
+        <div style="font-family:var(--font);font-size:26px;font-weight:700;color:#fff">₹${fmt(d.finalCash)}</div>
+      </div>
     </div>
-    ${mHtml?`<div class="report-section"><div class="report-section-title">Mobil</div><table class="rtable"><thead><tr><th>Product</th><th>Qty</th><th>Amount</th></tr></thead><tbody>${mHtml}</tbody></table></div>`:''}
-    ${advHtml?`<div class="report-section"><div class="report-section-title">Advances</div><table class="rtable"><thead><tr><th>Employee</th><th>Amount</th></tr></thead><tbody>${advHtml}</tbody></table></div>`:''}
-    ${eHtml?`<div class="report-section"><div class="report-section-title">Expenses</div><table class="rtable"><thead><tr><th>Category</th><th>Amount</th></tr></thead><tbody>${eHtml}</tbody></table></div>`:''}
-    <div class="final-cash-box"><div><div class="fc-label">Final Cash</div><div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:2px">→ Tomorrow BF: ₹${fmt(d.finalCash)}</div></div><div class="fc-val">₹${fmt(d.finalCash)}</div></div>
+
+    <!-- HSD NOZZLES -->
+    <div class="report-section">
+      <div class="report-section-title"><span class="tag tag-hsd">HSD</span> Nozzle Readings — Rate: ₹${d.hsdRsp}/L</div>
+      <div style="overflow-x:auto"><table class="rtable">
+        <thead><tr><th>Nozzle</th><th>Opening</th><th>Closing</th><th>Sale (L)</th><th>Amount (₹)</th></tr></thead>
+        <tbody>${hNozzles}</tbody>
+        <tfoot><tr><td colspan="3"><b>HSD Total</b></td><td class="right"><b>${(d.hsdGross||0).toFixed(2)} L</b></td><td class="right"><b>₹${fmt(d.hsdAmt)}</b></td></tr></tfoot>
+      </table></div>
+      <div style="margin-top:8px;font-size:12px;color:var(--ink-light)">
+        Gross: ${(d.hsdGross||0).toFixed(2)} L &nbsp;|&nbsp; Testing: ${(d.hsdTest||0).toFixed(2)} L &nbsp;|&nbsp; <b>Net: ${(d.hsdNet||0).toFixed(2)} L</b>
+      </div>
+    </div>
+
+    <!-- MS NOZZLES -->
+    <div class="report-section">
+      <div class="report-section-title"><span class="tag tag-ms">MS</span> Nozzle Readings — Rate: ₹${d.msRsp}/L</div>
+      <div style="overflow-x:auto"><table class="rtable">
+        <thead><tr><th>Nozzle</th><th>Opening</th><th>Closing</th><th>Sale (L)</th><th>Amount (₹)</th></tr></thead>
+        <tbody>${mNozzles}</tbody>
+        <tfoot><tr><td colspan="3"><b>MS Total</b></td><td class="right"><b>${(d.msGross||0).toFixed(2)} L</b></td><td class="right"><b>₹${fmt(d.msAmt)}</b></td></tr></tfoot>
+      </table></div>
+      <div style="margin-top:8px;font-size:12px;color:var(--ink-light)">
+        Gross: ${(d.msGross||0).toFixed(2)} L &nbsp;|&nbsp; Testing: ${(d.msTest||0).toFixed(2)} L &nbsp;|&nbsp; <b>Net: ${(d.msNet||0).toFixed(2)} L</b>
+      </div>
+    </div>
+
+    <!-- INCOME SUMMARY -->
+    <div class="report-section">
+      <div class="report-section-title">💰 Income Summary</div>
+      <div class="summary-row"><span class="summary-lbl">HSD Net: ${(d.hsdNet||0).toFixed(2)} L × ₹${d.hsdRsp}</span><span class="summary-val">₹${fmt(d.hsdAmt)}</span></div>
+      <div class="summary-row"><span class="summary-lbl">MS Net: ${(d.msNet||0).toFixed(2)} L × ₹${d.msRsp}</span><span class="summary-val">₹${fmt(d.msAmt)}</span></div>
+      <div class="summary-row" style="border-top:1px solid var(--ioc-border);padding-top:6px"><span class="summary-lbl"><b>Fuel Total</b></span><span class="summary-val"><b>₹${fmt(d.fuelTotal)}</b></span></div>
+      <div class="summary-row"><span class="summary-lbl">Balance Forward (BF)</span><span class="summary-val">₹${fmt(d.bf||0)}</span></div>
+      <div class="summary-row"><span class="summary-lbl">Mobil Sales</span><span class="summary-val">₹${fmt(d.mobilTotal||0)}</span></div>
+      <div class="summary-row"><span class="summary-lbl">Deposits Received</span><span class="summary-val">₹${fmt(d.depositTotal||0)}</span></div>
+      <div class="summary-row" style="border-top:2px solid var(--ioc-navy);padding-top:8px;margin-top:4px"><span class="summary-lbl" style="font-size:14px"><b>GROSS TOTAL</b></span><span class="summary-val" style="color:var(--ioc-navy);font-size:16px"><b>₹${fmt(d.grossTotal)}</b></span></div>
+    </div>
+
+    <!-- DEDUCTIONS -->
+    <div class="report-section">
+      <div class="report-section-title" style="color:var(--ioc-red)">🔻 Deductions</div>
+      <div class="summary-row"><span class="summary-lbl">Paytm Collection</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.paytmTotal||0)}</span></div>
+      <div class="summary-row"><span class="summary-lbl">OTP</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.otp||0)}</span></div>
+      ${(d.tanker||0)?`<div class="summary-row"><span class="summary-lbl">Tanker Expense${d.tankerName?' — '+d.tankerName:''}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.tanker)}</span></div>`:''}
+      ${(d.acctTr||0)?`<div class="summary-row"><span class="summary-lbl">Account Transfer</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.acctTr)}</span></div>`:''}
+      ${(d.hoBank||0)?`<div class="summary-row"><span class="summary-lbl">HO / Bank Deposit</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.hoBank)}</span></div>`:''}
+      ${(d.advItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Advance — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
+      ${(d.creditSaleItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Credit Sale — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
+      ${(d.pumpExpItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Expense — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
+      <div class="summary-row" style="border-top:2px solid var(--ioc-red);padding-top:8px;margin-top:4px"><span class="summary-lbl" style="font-size:14px"><b>TOTAL DEDUCTIONS</b></span><span class="summary-val" style="color:var(--ioc-red);font-size:16px"><b>₹${fmt(d.totalDeductions)}</b></span></div>
+    </div>
+
+    <!-- DETAILED SECTIONS -->
+    ${mHtml}${depHtml}${csHtml}${advHtml}${eHtml}
+
+    <!-- FINAL CASH BOX -->
+    <div class="final-cash-box">
+      <div>
+        <div class="fc-label">Final Cash in Hand</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:4px">Gross: ₹${fmt(d.grossTotal)}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.5)">Deductions: ₹${fmt(d.totalDeductions)}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:6px;font-weight:600">→ Tomorrow's BF: ₹${fmt(d.finalCash)}</div>
+      </div>
+      <div class="fc-val">₹${fmt(d.finalCash)}</div>
+    </div>
   </div>
-  <div class="btn-row" style="margin-top:12px"><button class="btn-primary" id="saveBtn" onclick="confirmSave()">☁️ Save & Sync</button><button class="btn-secondary" onclick="window.print()">🖨️ Print</button><button class="btn-secondary" onclick="goStep(0)">← Edit</button></div>
+  <div class="btn-row" style="margin-top:12px">
+    <button class="btn-primary" id="saveBtn" onclick="confirmSave()">☁️ Save & Sync</button>
+    <button class="btn-secondary" onclick="window.print()">🖨️ Print</button>
+    <button class="btn-secondary" onclick="goStep(0)">← Edit</button>
+  </div>
   <div id="saveMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>`;
 }
 async function confirmSave(){
