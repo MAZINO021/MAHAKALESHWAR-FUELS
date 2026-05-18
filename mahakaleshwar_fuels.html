@@ -1350,43 +1350,214 @@ async function removeRecv(i){recvData.splice(i,1);await cloudSet(STORE_KEY_RECV,
 // ── MODULE 6: CREDIT SALES ────────────────────────────────────────────────────
 function renderCreditSales(){
   document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="backToModules()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
+
+  // ── AUTO-BUILD credit ledger from Daily Sales records
+  // Credit entries come FROM cloudData.records (daily sales credit items)
+  // Payment entries come FROM creditData (manually entered payments)
   const parties={};
-  creditData.forEach(t=>{if(!parties[t.party])parties[t.party]={total:0,paid:0};if(t.type==='credit')parties[t.party].total+=t.amt;else parties[t.party].paid+=t.amt;});
-  const totalDue=Object.values(parties).reduce((a,p)=>a+Math.max(0,p.total-p.paid),0);
-  const partyRows=Object.entries(parties).map(([name,p])=>{const bal=p.total-p.paid;return `<div onclick="showCreditParty('${name.replace(/'/g,"\\'")}')\" class="hist-item"><div><div class="hist-date">${name}</div><div class="hist-sub">Credit: ₹${fmt(p.total)} | Paid: ₹${fmt(p.paid)}</div></div><div style="text-align:right"><div style="font-size:12px;font-weight:600;color:${bal>0?'var(--ioc-red)':'var(--green)'}">${bal>0?'Due':'Cleared'}</div><div style="font-size:14px;font-weight:700;color:${bal>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(Math.abs(bal))}</div></div></div>`;}).join('');
+
+  // Step 1: Pull all credit sales from daily sales records
+  cloudData.records.forEach(r=>{
+    (r.creditSaleItems||[]).forEach(item=>{
+      if(!parties[item.name])parties[item.name]={credit:0,paid:0,txns:[]};
+      parties[item.name].credit+=item.amt;
+      parties[item.name].txns.push({date:r.date,type:'credit',amt:item.amt,note:'Daily Sales',auto:true});
+    });
+    // Also handle old-style csTotal with single party name
+    if((r.csTotal||0)>0&&!(r.creditSaleItems||[]).length){
+      const pname='Credit Sale';
+      if(!parties[pname])parties[pname]={credit:0,paid:0,txns:[]};
+      parties[pname].credit+=r.csTotal;
+      parties[pname].txns.push({date:r.date,type:'credit',amt:r.csTotal,note:'Daily Sales',auto:true});
+    }
+  });
+
+  // Step 2: Add manual payment entries from creditData
+  creditData.forEach(t=>{
+    if(t.type==='payment'){
+      if(!parties[t.party])parties[t.party]={credit:0,paid:0,txns:[]};
+      parties[t.party].paid+=t.amt;
+      parties[t.party].txns.push({date:t.date,type:'payment',amt:t.amt,note:t.note||'',auto:false});
+    }
+    // Also add any manual credit entries (legacy)
+    if(t.type==='credit'&&!cloudData.records.some(r=>(r.creditSaleItems||[]).some(ci=>ci.name===t.party&&ci.amt===t.amt&&r.date===t.date))){
+      if(!parties[t.party])parties[t.party]={credit:0,paid:0,txns:[]};
+      parties[t.party].credit+=t.amt;
+      parties[t.party].txns.push({date:t.date,type:'credit',amt:t.amt,note:t.note||'Manual',auto:false});
+    }
+  });
+
+  const totalDue=Object.values(parties).reduce((a,p)=>a+Math.max(0,p.credit-p.paid),0);
+  const totalCredit=Object.values(parties).reduce((a,p)=>a+p.credit,0);
+  const totalPaid=Object.values(parties).reduce((a,p)=>a+p.paid,0);
+
+  const partyRows=Object.entries(parties).sort(([,a],[,b])=>(b.credit-b.paid)-(a.credit-a.paid)).map(([name,p])=>{
+    const bal=p.credit-p.paid;
+    return`<div onclick="showCreditParty('${name.replace(/'/g,"\\'")}',${JSON.stringify(p).replace(/'/g,"\\'")})" class="hist-item" style="cursor:pointer">
+      <div style="flex:1">
+        <div class="hist-date" style="font-size:14px">${name}</div>
+        <div class="hist-sub">
+          Credit: ₹${fmt(p.credit)} &nbsp;|&nbsp; Paid: ₹${fmt(p.paid)}
+          &nbsp;|&nbsp; <span style="font-size:10px;font-weight:700;color:var(--ink-light)">${p.txns.filter(t=>t.auto).length} from sales · ${p.txns.filter(t=>!t.auto&&t.type==='payment').length} payments</span>
+        </div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:11px;font-weight:600;color:${bal>0?'var(--ioc-red)':'var(--green)'}">${bal>0?'⚠️ Due':'✅ Clear'}</div>
+        <div style="font-size:16px;font-weight:700;color:${bal>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(Math.abs(bal))}</div>
+      </div>
+    </div>`;
+  }).join('');
+
   document.getElementById('stepContent').innerHTML=`
-  <div class="card"><div class="card-title">➕ Add Transaction</div>
-    <div class="grid2" style="margin-bottom:10px">
-      <div class="field"><div class="lbl">Party Name</div><input type="text" id="cr_party" placeholder="Party name" list="partyList"><datalist id="partyList">${Object.keys(parties).map(p=>`<option value="${p}">`).join('')}</datalist></div>
-      <div class="field"><div class="lbl">Type</div><select id="cr_type" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"><option value="credit">Credit (Sale)</option><option value="payment">Payment (Received)</option></select></div>
-      <div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="cr_amt" placeholder="0" step="0.01"></div>
-      <div class="field"><div class="lbl">Date</div><input type="date" id="cr_date" value="${todayKey0()}" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%"></div>
-    </div>
-    <div class="field" style="margin-bottom:12px"><div class="lbl">Note</div><input type="text" id="cr_note" placeholder="Optional"></div>
-    <button class="btn-primary" onclick="addCreditTxn()">+ Add</button>
+  <!-- INFO BANNER -->
+  <div class="alert-info" style="margin-bottom:12px">
+    <b>✅ Auto-synced from Daily Sales</b> — Credit entries are pulled automatically from your daily sales records. You only need to enter <b>payments received</b> here.
   </div>
-  <div class="card"><div class="card-title">📊 Outstanding: ₹${fmt(totalDue)}</div>
-    <div id="creditPartyList">${partyRows||'<div style="text-align:center;padding:20px;color:var(--ink-light)">No credit parties yet</div>'}</div>
+
+  <!-- SUMMARY CARDS -->
+  <div class="grid3" style="margin-bottom:14px">
+    <div style="padding:14px;background:var(--ioc-red-light);border-radius:var(--rl);border:1px solid var(--ioc-red);text-align:center">
+      <div style="font-size:10px;font-weight:700;color:var(--ioc-red);text-transform:uppercase;margin-bottom:4px">Total Credit Given</div>
+      <div style="font-size:20px;font-weight:700;color:var(--ioc-red)">₹${fmt(totalCredit)}</div>
+    </div>
+    <div style="padding:14px;background:#f0fff4;border-radius:var(--rl);border:1px solid var(--green);text-align:center">
+      <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:4px">Total Paid Back</div>
+      <div style="font-size:20px;font-weight:700;color:var(--green)">₹${fmt(totalPaid)}</div>
+    </div>
+    <div style="padding:14px;background:${totalDue>0?'#FFF5F5':'#f0fff4'};border-radius:var(--rl);border:1px solid ${totalDue>0?'var(--ioc-red)':'var(--green)'};text-align:center">
+      <div style="font-size:10px;font-weight:700;color:${totalDue>0?'var(--ioc-red)':'var(--green)'};text-transform:uppercase;margin-bottom:4px">Outstanding</div>
+      <div style="font-size:20px;font-weight:700;color:${totalDue>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(totalDue)}</div>
+    </div>
+  </div>
+
+  <!-- ADD PAYMENT ONLY -->
+  <div class="card">
+    <div class="card-title">💰 Record Payment Received</div>
+    <div style="font-size:12px;color:var(--ink-light);margin-bottom:12px">Enter when a credit party pays you back. Credit entries are auto-fetched from daily sales.</div>
+    <div class="grid2" style="margin-bottom:10px">
+      <div class="field">
+        <div class="lbl">Party Name</div>
+        <input type="text" id="cr_party" placeholder="Select party" list="partyAutoList">
+        <datalist id="partyAutoList">${Object.keys(parties).map(p=>`<option value="${p}">`).join('')}</datalist>
+      </div>
+      <div class="field">
+        <div class="lbl">Amount Paid (₹)</div>
+        <input type="number" id="cr_amt" placeholder="0" step="0.01">
+      </div>
+      <div class="field">
+        <div class="lbl">Date</div>
+        <input type="date" id="cr_date" value="${todayKey0()}" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%">
+      </div>
+      <div class="field">
+        <div class="lbl">Note (optional)</div>
+        <input type="text" id="cr_note" placeholder="Cash / UPI / Cheque…">
+      </div>
+    </div>
+    <button class="btn-primary" onclick="addPaymentTxn()">✅ Record Payment</button>
+  </div>
+
+  <!-- PARTY LIST -->
+  <div class="card">
+    <div class="card-title">📋 All Credit Parties (${Object.keys(parties).length})</div>
+    <div style="font-size:11px;color:var(--ink-light);margin-bottom:10px">Tap any party to see full ledger with all transactions</div>
+    ${partyRows||'<div style="text-align:center;padding:20px;color:var(--ink-light)">No credit sales yet. They will appear automatically once you save daily sales with credit entries.</div>'}
   </div>
   <div id="creditPartyDetail" style="display:none"></div>`;
 }
-async function addCreditTxn(){
-  const party=gs('cr_party'),type=document.getElementById('cr_type').value,amt=gv('cr_amt'),date=document.getElementById('cr_date').value,note=gs('cr_note');
-  if(!party||!amt){alert('Enter party and amount');return;}
-  creditData.push({party,type,amt,date,note});await cloudSet(STORE_KEY_CREDIT,creditData);
-  document.getElementById('cr_party').value='';document.getElementById('cr_amt').value='';document.getElementById('cr_note').value='';renderCreditSales();
+
+async function addPaymentTxn(){
+  const party=gs('cr_party'),amt=gv('cr_amt'),date=document.getElementById('cr_date').value,note=gs('cr_note');
+  if(!party||!amt){alert('Enter party name and amount');return;}
+  creditData.push({party,type:'payment',amt,date,note});
+  await cloudSet(STORE_KEY_CREDIT,creditData);
+  document.getElementById('cr_party').value='';
+  document.getElementById('cr_amt').value='';
+  document.getElementById('cr_note').value='';
+  renderCreditSales();
+  alert(`✅ Payment of ₹${fmt(amt)} recorded for ${party}`);
 }
-function showCreditParty(name){
-  const txns=creditData.filter(t=>t.party===name).sort((a,b)=>a.date.localeCompare(b.date));
+
+// Keep addCreditTxn for any legacy calls
+async function addCreditTxn(){addPaymentTxn();}
+
+function showCreditParty(name,pObj){
+  // Build transaction list from both sources
+  const autoTxns=[];
+  cloudData.records.forEach(r=>{
+    (r.creditSaleItems||[]).forEach(item=>{
+      if(item.name===name)autoTxns.push({date:r.date,type:'credit',amt:item.amt,note:'From Daily Sales',auto:true});
+    });
+    if((r.csTotal||0)>0&&!(r.creditSaleItems||[]).length&&name==='Credit Sale'){
+      autoTxns.push({date:r.date,type:'credit',amt:r.csTotal,note:'From Daily Sales',auto:true});
+    }
+  });
+  const manualTxns=creditData.filter(t=>t.party===name);
+  const allTxns=[...autoTxns,...manualTxns].sort((a,b)=>a.date.localeCompare(b.date));
+
   let running=0;
-  const rows=txns.map(t=>{if(t.type==='credit')running+=t.amt;else running-=t.amt;return `<tr><td>${t.date}</td><td><span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;background:${t.type==='credit'?'var(--ioc-red-light)':'var(--green-light)'};color:${t.type==='credit'?'var(--ioc-red)':'var(--green)'}">${t.type==='credit'?'CREDIT':'PAYMENT'}</span></td><td class="right" style="color:${t.type==='credit'?'var(--ioc-red)':'var(--green)'}">${t.type==='credit'?'+':'-'}₹${fmt(t.amt)}</td><td style="font-weight:600;color:var(--ioc-navy)">₹${fmt(running)}</td><td style="font-size:11px;color:var(--ink-light)">${t.note||'—'}</td></tr>`;}).join('');
-  const total=txns.filter(t=>t.type==='credit').reduce((a,t)=>a+t.amt,0);
-  const paid=txns.filter(t=>t.type==='payment').reduce((a,t)=>a+t.amt,0);
+  const rows=allTxns.map(t=>{
+    if(t.type==='credit')running+=t.amt;else running-=t.amt;
+    return`<tr>
+      <td>${t.date}</td>
+      <td>
+        <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:${t.type==='credit'?'var(--ioc-red-light)':'#f0fff4'};color:${t.type==='credit'?'var(--ioc-red)':'var(--green)'}">
+          ${t.type==='credit'?'CREDIT':'PAYMENT'}
+        </span>
+        ${t.auto?'<span style="font-size:9px;color:var(--ink-light);margin-left:4px">auto</span>':''}
+      </td>
+      <td class="right" style="color:${t.type==='credit'?'var(--ioc-red)':'var(--green)'};">${t.type==='credit'?'+':'-'}₹${fmt(t.amt)}</td>
+      <td style="font-weight:600;color:${running>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(running)}</td>
+      <td style="font-size:11px;color:var(--ink-light)">${t.note||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const total=allTxns.filter(t=>t.type==='credit').reduce((a,t)=>a+t.amt,0);
+  const paid=allTxns.filter(t=>t.type==='payment').reduce((a,t)=>a+t.amt,0);
+  const bal=total-paid;
+
   const det=document.getElementById('creditPartyDetail');det.style.display='';
-  det.innerHTML=`<div class="report"><div class="report-header"><div><div class="report-title">${name}</div><div class="report-sub">Credit Ledger</div></div><div style="text-align:right"><div style="font-size:10px;color:rgba(255,255,255,.4)">Balance Due</div><div style="font-family:var(--font);font-size:22px;font-weight:700;color:${total-paid>0?'#FF8080':'#4AFF8A'}">₹${fmt(total-paid)}</div></div></div>
-    <div class="report-section"><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px"><div style="text-align:center"><div style="font-size:10px;color:var(--ink-light)">Credit</div><div style="font-size:16px;font-weight:700;color:var(--ioc-red)">₹${fmt(total)}</div></div><div style="text-align:center"><div style="font-size:10px;color:var(--ink-light)">Paid</div><div style="font-size:16px;font-weight:700;color:var(--green)">₹${fmt(paid)}</div></div><div style="text-align:center"><div style="font-size:10px;color:var(--ink-light)">Balance</div><div style="font-size:16px;font-weight:700;color:${total-paid>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(total-paid)}</div></div></div></div>
-    <div class="report-section"><div class="report-section-title">Transactions</div><div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance</th><th>Note</th></tr></thead><tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:var(--ink-light);padding:12px">No transactions</td></tr>'}</tbody></table></div></div></div>
-    <div class="btn-row"><button class="btn-secondary" onclick="document.getElementById('creditPartyDetail').style.display='none'">← Back</button><button class="btn-secondary" onclick="window.print()">🖨️ Print</button></div>`;
+  det.innerHTML=`
+  <div class="report">
+    <div class="report-header">
+      <div>
+        <div class="report-title">${name}</div>
+        <div class="report-sub">Credit Ledger — Auto-synced from Daily Sales</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:10px;color:rgba(255,255,255,.4)">Balance Due</div>
+        <div style="font-family:var(--font);font-size:24px;font-weight:700;color:${bal>0?'#FF8080':'#4AFF8A'}">₹${fmt(bal)}</div>
+      </div>
+    </div>
+    <div class="report-section">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center">
+        <div style="padding:10px;background:var(--ioc-red-light);border-radius:var(--r)">
+          <div style="font-size:10px;color:var(--ink-light);text-transform:uppercase">Total Credit</div>
+          <div style="font-size:18px;font-weight:700;color:var(--ioc-red)">₹${fmt(total)}</div>
+        </div>
+        <div style="padding:10px;background:#f0fff4;border-radius:var(--r)">
+          <div style="font-size:10px;color:var(--ink-light);text-transform:uppercase">Total Paid</div>
+          <div style="font-size:18px;font-weight:700;color:var(--green)">₹${fmt(paid)}</div>
+        </div>
+        <div style="padding:10px;background:${bal>0?'#FFF5F5':'#f0fff4'};border-radius:var(--r)">
+          <div style="font-size:10px;color:var(--ink-light);text-transform:uppercase">Balance</div>
+          <div style="font-size:18px;font-weight:700;color:${bal>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(Math.abs(bal))}</div>
+        </div>
+      </div>
+    </div>
+    <div class="report-section">
+      <div class="report-section-title">All Transactions</div>
+      <div style="overflow-x:auto">
+        <table class="rtable">
+          <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Running Balance</th><th>Note</th></tr></thead>
+          <tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:var(--ink-light);padding:12px">No transactions</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn-secondary" onclick="document.getElementById('creditPartyDetail').style.display='none'">← Back</button>
+    <button class="btn-secondary" onclick="window.print()">🖨️ Print</button>
+  </div>`;
   det.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
