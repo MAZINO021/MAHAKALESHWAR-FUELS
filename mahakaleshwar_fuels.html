@@ -1434,6 +1434,28 @@ function renderOwnerReport(){
   })()}
   <div id="ownerModuleSelect" class="card">
     <div class="card-title">👑 Owner Dashboard</div>
+    ${(()=>{
+      const alerts=[];
+      const today=new Date().toISOString().slice(0,10);
+      const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);const yStr=yesterday.toISOString().slice(0,10);
+      // Missing yesterday's record
+      if(!cloudData.records.find(r=>r.date===yStr)&&new Date().getHours()>10){
+        alerts.push(`⚠️ No sales record for yesterday (${yStr})`);
+      }
+      // Outstanding credit
+      const partyMap={};
+      creditData.forEach(t=>{if(!partyMap[t.party])partyMap[t.party]={c:0,p:0};if(t.type==='credit')partyMap[t.party].c+=t.amt;else partyMap[t.party].p+=t.amt;});
+      const outstanding=Object.entries(partyMap).filter(([,v])=>v.c-v.p>0);
+      const totalOut=outstanding.reduce((a,[,v])=>a+(v.c-v.p),0);
+      if(totalOut>0)alerts.push(`💳 Outstanding credit: ₹${Number(totalOut).toLocaleString('en-IN')} from ${outstanding.length} parties`);
+      // Inspection variance
+      const lastInsp=Object.entries(inspectData).sort((a,b)=>b[0].localeCompare(a[0]))[0];
+      if(lastInsp&&(Math.abs(lastInsp[1].hsdDiff||0)>5||Math.abs(lastInsp[1].msDiff||0)>5)){
+        alerts.push(`🛢️ Stock variance detected on ${lastInsp[0]} — HSD: ${(lastInsp[1].hsdDiff||0).toFixed(1)}L MS: ${(lastInsp[1].msDiff||0).toFixed(1)}L`);
+      }
+      if(!alerts.length)return'';
+      return`<div style="margin-bottom:14px">${alerts.map(a=>`<div style="padding:8px 12px;background:#FFF5F5;border-left:3px solid var(--ioc-red);border-radius:0 var(--r) var(--r) 0;font-size:12px;color:var(--ioc-red);font-weight:500;margin-bottom:6px">${a}</div>`).join('')}</div>`;
+    })()}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" id="ownerModuleGrid">
       <button onclick="openOwnerTab('reports')" style="padding:22px 16px;background:var(--ioc-navy-light);border:1.5px solid var(--ioc-border);border-radius:var(--rl);cursor:pointer;text-align:left;transition:all .2s;font-family:var(--ui)" onmouseover="this.style.borderColor='var(--ioc-red)';this.style.background='#FFF5F5'" onmouseout="this.style.borderColor='var(--ioc-border)';this.style.background='var(--ioc-navy-light)'">
         <div style="font-size:28px;margin-bottom:10px">📊</div>
@@ -1538,10 +1560,17 @@ function renderOwnerGrowth(){
   function profitOf(recs){
     const h=recs.reduce((a,r)=>a+(r.hsdNet||0),0);
     const m=recs.reduce((a,r)=>a+(r.msNet||0),0);
+    const fuel=recs.reduce((a,r)=>a+(r.fuelTotal||0),0);
     const gross=h*HSD_MARGIN+m*MS_MARGIN+recs.reduce((a,r)=>a+(r.mobilTotal||0),0);
     const exp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+    const adv=recs.reduce((a,r)=>a+(r.advTotal||0),0);
+    const paytm=recs.reduce((a,r)=>a+(r.paytmTotal||0),0);
+    const cs=recs.reduce((a,r)=>a+(r.csTotal||0),0);
+    const hoBank=recs.reduce((a,r)=>a+(r.hoBank||0),0);
     const testInc=testingData.filter(t=>recs.some(r=>r.date===t.date)&&t.type==='sold').reduce((a,t)=>a+t.income,0);
-    return{hsdL:h,msL:m,gross,exp,net:gross-exp+testInc,testInc,days:recs.length};
+    const bestDay=recs.reduce((a,r)=>(r.netProfit||0)>(a.netProfit||0)?r:a,recs[0]||{});
+    const avgProfit=recs.length?gross/recs.length:0;
+    return{hsdL:h,msL:m,fuel,gross,exp,adv,paytm,cs,hoBank,net:gross-exp+testInc,testInc,days:recs.length,bestDay,avgProfit};
   }
 
   const dayP=profitOf(cloudData.records.filter(r=>r.date===today));
@@ -1551,7 +1580,6 @@ function renderOwnerGrowth(){
   const prevYP=profitOf(cloudData.records.filter(r=>r.date.startsWith(prevYearStr)));
   const allP=profitOf(cloudData.records);
 
-  // LRF/Incentive for this month
   const lrfKey=`lrf_${monthStr}`;
   const lrf=portfolioData.months?.[lrfKey]?.lrf||0;
   const inc=portfolioData.months?.[lrfKey]?.incentive||0;
@@ -1560,53 +1588,156 @@ function renderOwnerGrowth(){
   const mGrowth=prevMP.net?((mP.net-prevMP.net)/Math.abs(prevMP.net)*100):null;
   const yGrowth=prevYP.net?((yP.net-prevYP.net)/Math.abs(prevYP.net)*100):null;
 
-  // Month-wise breakdown
+  // Month map
   const monthMap={};cloudData.records.forEach(r=>{const mk=r.date.slice(0,7);if(!monthMap[mk])monthMap[mk]=[];monthMap[mk].push(r);});
   const monthRows=Object.entries(monthMap).sort(([a],[b])=>b.localeCompare(a)).map(([mk,recs])=>{
     const p=profitOf(recs);
     const lrfM=portfolioData.months?.[`lrf_${mk}`]?.lrf||0;
     const incM=portfolioData.months?.[`lrf_${mk}`]?.incentive||0;
     const net=p.net-lrfM+incM;
-    return`<tr><td style="font-weight:600">${mk}</td><td class="right">${p.days}</td><td class="right">${p.hsdL.toFixed(0)}L</td><td class="right">${p.msL.toFixed(0)}L</td><td class="right" style="color:var(--green)">₹${fmt(p.gross)}</td><td class="right" style="color:var(--ioc-red)">₹${fmt(p.exp)}</td><td class="right" style="color:var(--amber)">₹${fmt(lrfM)}</td><td class="right" style="color:var(--green)">₹${fmt(incM)}</td><td class="right" style="color:var(--green);font-weight:700">₹${fmt(net)}</td></tr>`;
+    const perDay=p.days?net/p.days:0;
+    return`<tr>
+      <td style="font-weight:600">${mk}</td>
+      <td class="right">${p.days}</td>
+      <td class="right">${p.hsdL.toFixed(0)}L</td>
+      <td class="right">${p.msL.toFixed(0)}L</td>
+      <td class="right">₹${fmt(p.fuel)}</td>
+      <td class="right" style="color:var(--green)">₹${fmt(p.gross)}</td>
+      <td class="right" style="color:var(--ioc-red)">₹${fmt(p.exp)}</td>
+      <td class="right" style="color:var(--amber)">₹${fmt(lrfM)}</td>
+      <td class="right" style="color:var(--green)">₹${fmt(incM)}</td>
+      <td class="right" style="color:var(--green);font-weight:700">₹${fmt(net)}</td>
+      <td class="right" style="color:var(--ink-light);font-size:11px">₹${fmt(perDay)}/day</td>
+    </tr>`;
   }).join('');
+
+  // Nozzle performance table
+  const nozzleRows=[...NOZZLES_HSD,...NOZZLES_MS].map(n=>{
+    const isHSD=NOZZLES_HSD.includes(n);
+    const total=cloudData.records.reduce((a,r)=>a+(r['sale_'+n]||0),0);
+    const rsp=cloudData.records.find(r=>r[isHSD?'hsdRsp':'msRsp'])?.[isHSD?'hsdRsp':'msRsp']||0;
+    const amt=total*rsp;
+    const avgPerDay=cloudData.records.length?total/cloudData.records.length:0;
+    return`<tr>
+      <td><span class="tag ${isHSD?'tag-hsd':'tag-ms'}">${n}</span></td>
+      <td class="right">${total.toFixed(1)} L</td>
+      <td class="right">₹${fmt(amt)}</td>
+      <td class="right" style="font-size:11px;color:var(--ink-light)">${avgPerDay.toFixed(1)} L/day</td>
+    </tr>`;
+  }).join('');
+
+  // Top expense categories
+  const expMap={};cloudData.records.forEach(r=>(r.pumpExpItems||[]).forEach(x=>{expMap[x.name]=(expMap[x.name]||0)+x.amt;}));
+  const topExp=Object.entries(expMap).sort(([,a],[,b])=>b-a).slice(0,8)
+    .map(([n,a])=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--ioc-border);font-size:12px"><span>${n}</span><span style="font-weight:700;color:var(--ioc-red)">₹${fmt(a)}</span></div>`).join('');
+
+  // Top advance recipients
+  const advMap={};cloudData.records.forEach(r=>(r.advItems||[]).forEach(x=>{advMap[x.name]=(advMap[x.name]||0)+x.amt;}));
+  const topAdv=Object.entries(advMap).sort(([,a],[,b])=>b-a)
+    .map(([n,a])=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--ioc-border);font-size:12px"><span>${n}</span><span style="font-weight:700;color:var(--ioc-red)">₹${fmt(a)}</span></div>`).join('');
 
   document.getElementById('ownerTabContent').innerHTML=`
     ${ownerBackBtn()}
-    <!-- Summary cards -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:16px">
+
+    <!-- HERO PROFIT CARDS -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
       ${gCard('Today',dayP.net,null)}
       ${gCard('This Month',mNetAdj,mGrowth)}
       ${gCard('This Year',yP.net,yGrowth)}
       ${gCard('All Time',allP.net,null)}
     </div>
+
+    <!-- MONTH DETAIL BREAKDOWN -->
+    <div class="card">
+      <div class="card-title">📊 This Month Deep Dive — ${monthStr}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">
+        <div style="padding:10px;background:var(--ioc-navy-light);border-radius:var(--r);text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase">HSD Sold</div>
+          <div style="font-size:16px;font-weight:700;color:var(--ioc-navy)">${mP.hsdL.toFixed(0)} L</div>
+        </div>
+        <div style="padding:10px;background:var(--ioc-red-light);border-radius:var(--r);text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase">MS Sold</div>
+          <div style="font-size:16px;font-weight:700;color:var(--ioc-red)">${mP.msL.toFixed(0)} L</div>
+        </div>
+        <div style="padding:10px;background:#f0fff4;border-radius:var(--r);text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase">Fuel Revenue</div>
+          <div style="font-size:16px;font-weight:700;color:var(--green)">₹${fmt(mP.fuel)}</div>
+        </div>
+        <div style="padding:10px;background:#fff8e1;border-radius:var(--r);text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase">Paytm</div>
+          <div style="font-size:16px;font-weight:700;color:var(--amber)">₹${fmt(mP.paytm)}</div>
+        </div>
+        <div style="padding:10px;background:#fff0f0;border-radius:var(--r);text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase">Expenses</div>
+          <div style="font-size:16px;font-weight:700;color:var(--ioc-red)">₹${fmt(mP.exp)}</div>
+        </div>
+        <div style="padding:10px;background:#fff0f0;border-radius:var(--r);text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase">Advances</div>
+          <div style="font-size:16px;font-weight:700;color:var(--ioc-red)">₹${fmt(mP.adv)}</div>
+        </div>
+        <div style="padding:10px;background:#fff0f0;border-radius:var(--r);text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase">HO/Bank</div>
+          <div style="font-size:16px;font-weight:700;color:var(--ioc-red)">₹${fmt(mP.hoBank)}</div>
+        </div>
+        <div style="padding:10px;background:#fff0f0;border-radius:var(--r);text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase">Credit Sales</div>
+          <div style="font-size:16px;font-weight:700;color:var(--ioc-red)">₹${fmt(mP.cs)}</div>
+        </div>
+      </div>
+      <!-- Profit margin bar -->
+      ${(()=>{const margin=mP.fuel>0?(mP.net/mP.fuel*100):0;return`<div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="font-weight:600">Profit Margin</span><span style="font-weight:700;color:var(--green)">${margin.toFixed(2)}%</span></div>
+        <div style="height:8px;background:var(--ioc-border);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${Math.min(100,Math.max(0,margin))}%;background:linear-gradient(90deg,var(--green),#3DB52E);border-radius:4px;transition:width .5s"></div>
+        </div>
+      </div>`;})()}
+    </div>
+
     <!-- LRF & Incentive -->
     <div class="card"><div class="card-title">📋 LRF & Incentive — ${monthStr}</div>
-      <div class="alert-info">LRF is deducted. Incentive is added. Entered once per month.</div>
+      <div class="alert-info">LRF is deducted. Incentive is added to net profit.</div>
       <div class="grid2" style="margin-bottom:10px">
         <div class="field"><div class="lbl">LRF (₹)</div><input type="number" id="lrfAmt" value="${lrf||''}" placeholder="0" step="0.01"></div>
         <div class="field"><div class="lbl">Incentive (₹)</div><input type="number" id="incAmt" value="${inc||''}" placeholder="0" step="0.01"></div>
       </div>
-      <button class="btn-primary" onclick="saveLRF('${monthStr}')">💾 Save</button>
+      <button class="btn-primary" onclick="saveLRF('${monthStr}')">💾 Save LRF/Incentive</button>
       <div id="lrfMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>
     </div>
-    <!-- Month-wise table -->
-    <div class="card"><div class="card-title">📅 Month-wise Breakdown</div>
+
+    <!-- NOZZLE PERFORMANCE -->
+    <div class="card"><div class="card-title">⛽ Nozzle Performance — All Time</div>
       <div style="overflow-x:auto"><table class="rtable">
-        <thead><tr><th>Month</th><th>Days</th><th>HSD</th><th>MS</th><th>Gross</th><th>Expense</th><th>LRF</th><th>Incentive</th><th>Net Profit</th></tr></thead>
-        <tbody>${monthRows||'<tr><td colspan="9" style="text-align:center;color:var(--ink-light);padding:12px">No records</td></tr>'}</tbody>
+        <thead><tr><th>Nozzle</th><th>Total Sale</th><th>Revenue</th><th>Avg/Day</th></tr></thead>
+        <tbody>${nozzleRows}</tbody>
       </table></div>
     </div>
-    <!-- Custom date range -->
-    <div class="card"><div class="card-title">📆 Custom Date Range</div>
+
+    <!-- TOP EXPENSES + ADVANCES side by side -->
+    <div class="grid2">
+      <div class="card"><div class="card-title">🧾 Top Expense Categories</div>${topExp||'<div style="color:var(--ink-light);font-size:12px">No expenses recorded</div>'}</div>
+      <div class="card"><div class="card-title">👷 Advance Recipients</div>${topAdv||'<div style="color:var(--ink-light);font-size:12px">No advances recorded</div>'}</div>
+    </div>
+
+    <!-- MONTH-WISE TABLE -->
+    <div class="card"><div class="card-title">📅 Month-wise Breakdown</div>
+      <div style="overflow-x:auto"><table class="rtable">
+        <thead><tr><th>Month</th><th>Days</th><th>HSD</th><th>MS</th><th>Fuel Rev</th><th>Gross Profit</th><th>Expenses</th><th>LRF</th><th>Incentive</th><th>Net Profit</th><th>Per Day</th></tr></thead>
+        <tbody>${monthRows||'<tr><td colspan="11" style="text-align:center;color:var(--ink-light);padding:12px">No records</td></tr>'}</tbody>
+      </table></div>
+    </div>
+
+    <!-- BAR CHART -->
+    <div class="card"><div class="card-title">📊 Monthly Profit Trend</div>${renderMiniChart()}</div>
+
+    <!-- CUSTOM DATE RANGE -->
+    <div class="card"><div class="card-title">📆 Custom Date Range Analysis</div>
       <div class="grid2" style="margin-bottom:10px">
         <div class="field"><div class="lbl">From</div><input type="date" id="gFrom" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"></div>
         <div class="field"><div class="lbl">To</div><input type="date" id="gTo" value="${today}" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"></div>
       </div>
-      <button class="btn-primary" onclick="calcGrowthCustom()">Calculate →</button>
+      <button class="btn-primary" onclick="calcGrowthCustom()">Analyze Range →</button>
       <div id="growthCustomResult" style="margin-top:12px"></div>
-    </div>
-    <!-- Bar chart -->
-    <div class="card"><div class="card-title">📊 Monthly Profit Trend</div>${renderMiniChart()}</div>`;
+    </div>`;
 }
 
 function gCard(label,val,pct){
@@ -2139,17 +2270,77 @@ function growthCard(label,val,pct){
 }
 
 function renderMiniChart(){
-  const monthMap={};cloudData.records.forEach(r=>{const mk=r.date.slice(0,7);if(!monthMap[mk])monthMap[mk]=0;monthMap[mk]+=(r.netProfit||0);});
+  // Return canvas placeholders — charts rendered after DOM insertion
+  const monthMap={};cloudData.records.forEach(r=>{const mk=r.date.slice(0,7);if(!monthMap[mk])monthMap[mk]={profit:0,hsd:0,ms:0,fuel:0,exp:0};monthMap[mk].profit+=(r.netProfit||0);monthMap[mk].hsd+=(r.hsdNet||0);monthMap[mk].ms+=(r.msNet||0);monthMap[mk].fuel+=(r.fuelTotal||0);monthMap[mk].exp+=(r.pumpExpTotal||0)+(r.tanker||0);});
   const entries=Object.entries(monthMap).sort(([a],[b])=>a.localeCompare(b)).slice(-6);
-  if(!entries.length)return'<div style="color:var(--ink-light);font-size:12px">Not enough data</div>';
-  const maxVal=Math.max(...entries.map(([,v])=>Math.abs(v)),1);
-  return`<div style="display:flex;align-items:flex-end;gap:8px;height:80px;padding:0 4px">
-    ${entries.map(([mk,v])=>{const pct=Math.abs(v)/maxVal*100;const pos=v>=0;return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
-      <div style="font-size:9px;color:var(--ink-light);margin-bottom:3px;text-align:center">${shortFmt(v)}</div>
-      <div style="width:100%;background:${pos?'var(--green)':'var(--ioc-red)'};border-radius:3px 3px 0 0;height:${pct}%;min-height:4px;opacity:.8"></div>
-      <div style="font-size:9px;color:var(--ink-light);margin-top:4px;text-align:center">${mk.slice(5)}</div>
-    </div>`;}).join('')}
-  </div>`;
+  if(!entries.length)return'<div style="color:var(--ink-light);font-size:12px;padding:8px">Not enough data for charts</div>';
+  const labels=JSON.stringify(entries.map(([mk])=>mk.slice(5)+'/'+mk.slice(0,4)));
+  const profits=JSON.stringify(entries.map(([,v])=>Math.round(v)));
+  const fuels=JSON.stringify(entries.map(([,v])=>Math.round(v.fuel)));
+  const hsds=JSON.stringify(entries.map(([,v])=>Math.round(v.hsd)));
+  const mss=JSON.stringify(entries.map(([,v])=>Math.round(v.ms)));
+  const exps=JSON.stringify(entries.map(([,v])=>Math.round(v.exp)));
+  return`
+  <div id="chartsContainer">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:#fff;border:1px solid var(--ioc-border);border-radius:var(--rl);padding:16px">
+        <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:12px">📊 Monthly Net Profit</div>
+        <canvas id="chartProfit" height="180"></canvas>
+      </div>
+      <div style="background:#fff;border:1px solid var(--ioc-border);border-radius:var(--rl);padding:16px">
+        <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:12px">⛽ HSD vs MS Sales (L)</div>
+        <canvas id="chartFuel" height="180"></canvas>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:#fff;border:1px solid var(--ioc-border);border-radius:var(--rl);padding:16px">
+        <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:12px">📈 Revenue Trend</div>
+        <canvas id="chartRevenue" height="180"></canvas>
+      </div>
+      <div style="background:#fff;border:1px solid var(--ioc-border);border-radius:var(--rl);padding:16px">
+        <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:12px">🍩 Fuel Mix (All Time)</div>
+        <canvas id="chartDonut" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function(){
+    function loadChartJs(cb){
+      if(window.Chart){cb();return;}
+      const s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+      s.onload=cb;document.head.appendChild(s);
+    }
+    loadChartJs(function(){
+      const labels=${labels};
+      const profits=${profits};
+      const fuels=${fuels};
+      const hsds=${hsds};
+      const mss=${mss};
+      const exps=${exps};
+      const toINR=v=>v>=10000000?'₹'+(v/10000000).toFixed(1)+'Cr':v>=100000?'₹'+(v/100000).toFixed(1)+'L':v>=1000?'₹'+(v/1000).toFixed(1)+'K':'₹'+v;
+      const defOpts={responsive:true,plugins:{legend:{labels:{font:{size:11},boxWidth:12}},tooltip:{callbacks:{label:ctx=>toINR(ctx.parsed.y||ctx.parsed||0)}}}};
+
+      // 1. Profit Bar Chart
+      const c1=document.getElementById('chartProfit');
+      if(c1&&!c1._chartInst){c1._chartInst=new Chart(c1,{type:'bar',data:{labels,datasets:[{label:'Net Profit',data:profits,backgroundColor:profits.map(v=>v>=0?'rgba(29,107,58,0.75)':'rgba(208,30,30,0.75)'),borderColor:profits.map(v=>v>=0?'#1D6B3A':'#D01E1E'),borderWidth:1.5,borderRadius:4}]},options:{...defOpts,scales:{y:{ticks:{callback:toINR},grid:{color:'rgba(0,0,0,0.05)'}},x:{grid:{display:false}}}}});}
+
+      // 2. HSD vs MS Grouped Bar
+      const c2=document.getElementById('chartFuel');
+      if(c2&&!c2._chartInst){c2._chartInst=new Chart(c2,{type:'bar',data:{labels,datasets:[{label:'HSD (L)',data:hsds,backgroundColor:'rgba(10,31,92,0.7)',borderColor:'#0A1F5C',borderWidth:1.5,borderRadius:3},{label:'MS (L)',data:mss,backgroundColor:'rgba(208,30,30,0.65)',borderColor:'#D01E1E',borderWidth:1.5,borderRadius:3}]},options:{...defOpts,scales:{y:{ticks:{callback:v=>v+'L'},grid:{color:'rgba(0,0,0,0.05)'}},x:{grid:{display:false}}}}});}
+
+      // 3. Revenue Line Chart
+      const c3=document.getElementById('chartRevenue');
+      if(c3&&!c3._chartInst){c3._chartInst=new Chart(c3,{type:'line',data:{labels,datasets:[{label:'Fuel Revenue',data:fuels,borderColor:'#0A1F5C',backgroundColor:'rgba(10,31,92,0.08)',fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:'#0A1F5C'},{label:'Expenses',data:exps,borderColor:'#D01E1E',backgroundColor:'rgba(208,30,30,0.05)',fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:'#D01E1E'}]},options:{...defOpts,scales:{y:{ticks:{callback:toINR},grid:{color:'rgba(0,0,0,0.05)'}},x:{grid:{display:false}}}}});}
+
+      // 4. Donut — HSD vs MS all time
+      const totalHSD=hsds.reduce((a,v)=>a+v,0);
+      const totalMS=mss.reduce((a,v)=>a+v,0);
+      const c4=document.getElementById('chartDonut');
+      if(c4&&!c4._chartInst){c4._chartInst=new Chart(c4,{type:'doughnut',data:{labels:['HSD (Diesel)','MS (Petrol)'],datasets:[{data:[totalHSD,totalMS],backgroundColor:['rgba(10,31,92,0.8)','rgba(208,30,30,0.75)'],borderColor:['#0A1F5C','#D01E1E'],borderWidth:2,hoverOffset:8}]},options:{responsive:true,cutout:'65%',plugins:{legend:{position:'bottom',labels:{font:{size:11},padding:16}},tooltip:{callbacks:{label:ctx=>ctx.label+': '+Math.round(ctx.raw)+'L ('+Math.round(ctx.raw/(totalHSD+totalMS)*100)+'%)'}}}}});}
+    });
+  })();
+  <\/script>`;
 }
 
 async function savePortfolio(hsdRsp,msRsp){
@@ -2361,13 +2552,120 @@ function renderCalendar(){
 function showHistDetailByDate(ds){const d=cloudData.records.find(r=>r.date===ds);if(d)showHistDetail(cloudData.records.indexOf(d));}
 function showHistDetail(i){
   const d=cloudData.records[i];if(!d)return;
-  let nHtml='';[...NOZZLES_HSD,...NOZZLES_MS].forEach(n=>{const f=NOZZLES_HSD.includes(n)?'HSD':'MS',rsp=f==='HSD'?d.hsdRsp:d.msRsp,sale=d['sale_'+n]||0;if(sale>0)nHtml+=`<tr><td>${n}</td><td><span class="tag ${f==='HSD'?'tag-hsd':'tag-ms'}">${f}</span></td><td class="right">${fmtL(sale)}</td><td class="right">₹${fmt(sale*rsp)}</td></tr>`;});
   const det=document.getElementById('historyDetail');det.style.display='';
   setTimeout(()=>det.scrollIntoView({behavior:'smooth',block:'start'}),100);
-  det.innerHTML=`<div class="report"><div class="report-header"><div><div class="report-title">Mahakaleshwar Fuels</div><div class="report-sub">${new Date(d.date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}</div></div><div style="text-align:right"><div style="font-size:10px;color:rgba(255,255,255,.4)">Final Cash</div><div style="font-family:var(--font);font-size:20px;font-weight:700;color:#fff">₹${fmt(d.finalCash)}</div></div></div>
-    <div class="report-section"><div class="report-section-title">Nozzle Sales</div><div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Nozzle</th><th>Fuel</th><th>Sale(L)</th><th>Amount</th></tr></thead><tbody>${nHtml}</tbody></table></div></div>
-    <div class="report-section"><div class="summary-row"><span class="summary-lbl">Fuel Total</span><span class="summary-val">₹${fmt(d.fuelTotal)}</span></div><div class="summary-row"><span class="summary-lbl">Gross Total</span><span class="summary-val">₹${fmt(d.grossTotal)}</span></div><div class="summary-row"><span class="summary-lbl">Deductions</span><span class="summary-val" style="color:var(--ioc-red)">₹${fmt(d.totalDeductions)}</span></div><div class="summary-row"><span class="summary-lbl"><b>Final Cash</b></span><span class="summary-val" style="color:var(--green);font-size:15px">₹${fmt(d.finalCash)}</span></div></div>
-    </div><div class="btn-row"><button class="btn-secondary" onclick="document.getElementById('historyDetail').style.display='none';window.scrollTo({top:0,behavior:'smooth'})">← Back</button><button class="btn-secondary" onclick="window.print()">🖨️ Print</button></div>`;
+
+  // Full nozzle table with opening + closing
+  let hNozzles='',mNozzles='';
+  NOZZLES_HSD.forEach(n=>{
+    const o=d['open_'+n]||0,c=d['cl_'+n]||0,s=d['sale_'+n]||0;
+    hNozzles+=`<tr><td style="font-weight:600">${n}</td><td>${o.toFixed(2)}</td><td>${c.toFixed(2)}</td><td class="right">${s.toFixed(2)} L</td><td class="right">₹${fmt(s*d.hsdRsp)}</td></tr>`;
+  });
+  NOZZLES_MS.forEach(n=>{
+    const o=d['open_'+n]||0,c=d['cl_'+n]||0,s=d['sale_'+n]||0;
+    mNozzles+=`<tr><td style="font-weight:600">${n}</td><td>${o.toFixed(2)}</td><td>${c.toFixed(2)}</td><td class="right">${s.toFixed(2)} L</td><td class="right">₹${fmt(s*d.msRsp)}</td></tr>`;
+  });
+
+  const mobilRows=(d.mobilItems||[]).map(m=>`<tr><td>${m.name}</td><td>${m.qty||'—'}</td><td class="right">₹${fmt(m.amt)}</td></tr>`).join('');
+  const advRows=(d.advItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('');
+  const csRows=(d.creditSaleItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right" style="color:var(--ioc-red)">₹${fmt(x.amt)}</td></tr>`).join('');
+  const expRows=(d.pumpExpItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('');
+  const depRows=(d.depositItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('');
+
+  det.innerHTML=`
+  <div class="report">
+    <!-- HEADER -->
+    <div class="report-header">
+      <div>
+        <div class="report-title">Mahakaleshwar Fuels</div>
+        <div class="report-sub">Indian Oil Corporation — Daily Reckoning</div>
+        <div class="report-sub" style="font-size:14px;margin-top:4px">${new Date(d.date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:10px;color:rgba(255,255,255,.5)">Final Cash in Hand</div>
+        <div style="font-family:var(--font);font-size:26px;font-weight:700;color:#fff">₹${fmt(d.finalCash)}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:3px">Est. Profit: ₹${fmt(d.netProfit||0)}</div>
+      </div>
+    </div>
+
+    <!-- HSD NOZZLES -->
+    <div class="report-section">
+      <div class="report-section-title"><span class="tag tag-hsd">HSD</span> Diesel Nozzles — ₹${d.hsdRsp}/L</div>
+      <div style="overflow-x:auto"><table class="rtable">
+        <thead><tr><th>Nozzle</th><th>Opening</th><th>Closing</th><th>Sale (L)</th><th>Amount (₹)</th></tr></thead>
+        <tbody>${hNozzles}</tbody>
+        <tfoot><tr style="background:var(--ioc-navy-light)">
+          <td colspan="2" style="font-weight:700">HSD Total</td>
+          <td style="font-size:11px;color:var(--ink-light)">Gross: ${(d.hsdGross||0).toFixed(2)}L − Test: ${(d.hsdTest||0).toFixed(2)}L</td>
+          <td class="right" style="font-weight:700;color:var(--ioc-navy)">${(d.hsdNet||0).toFixed(2)} L</td>
+          <td class="right" style="font-weight:700;color:var(--ioc-navy)">₹${fmt(d.hsdAmt)}</td>
+        </tr></tfoot>
+      </table></div>
+    </div>
+
+    <!-- MS NOZZLES -->
+    <div class="report-section">
+      <div class="report-section-title"><span class="tag tag-ms">MS</span> Petrol Nozzles — ₹${d.msRsp}/L</div>
+      <div style="overflow-x:auto"><table class="rtable">
+        <thead><tr><th>Nozzle</th><th>Opening</th><th>Closing</th><th>Sale (L)</th><th>Amount (₹)</th></tr></thead>
+        <tbody>${mNozzles}</tbody>
+        <tfoot><tr style="background:var(--ioc-red-light)">
+          <td colspan="2" style="font-weight:700">MS Total</td>
+          <td style="font-size:11px;color:var(--ink-light)">Gross: ${(d.msGross||0).toFixed(2)}L − Test: ${(d.msTest||0).toFixed(2)}L</td>
+          <td class="right" style="font-weight:700;color:var(--ioc-red)">${(d.msNet||0).toFixed(2)} L</td>
+          <td class="right" style="font-weight:700;color:var(--ioc-red)">₹${fmt(d.msAmt)}</td>
+        </tr></tfoot>
+      </table></div>
+    </div>
+
+    <!-- INCOME SUMMARY -->
+    <div class="report-section">
+      <div class="report-section-title">💰 Income Summary</div>
+      <div class="summary-row"><span class="summary-lbl">HSD: ${(d.hsdNet||0).toFixed(2)} L × ₹${d.hsdRsp}</span><span class="summary-val">₹${fmt(d.hsdAmt)}</span></div>
+      <div class="summary-row"><span class="summary-lbl">MS: ${(d.msNet||0).toFixed(2)} L × ₹${d.msRsp}</span><span class="summary-val">₹${fmt(d.msAmt)}</span></div>
+      <div class="summary-row" style="border-top:1px solid var(--ioc-border);padding-top:6px"><span class="summary-lbl"><b>Fuel Total</b></span><span class="summary-val"><b>₹${fmt(d.fuelTotal)}</b></span></div>
+      ${(d.bf||0)?`<div class="summary-row"><span class="summary-lbl">+ Balance Forward</span><span class="summary-val">₹${fmt(d.bf)}</span></div>`:''}
+      ${(d.mobilTotal||0)?`<div class="summary-row"><span class="summary-lbl">+ Mobil Sales</span><span class="summary-val">₹${fmt(d.mobilTotal)}</span></div>`:''}
+      ${(d.depositTotal||0)?`<div class="summary-row"><span class="summary-lbl">+ Deposits</span><span class="summary-val">₹${fmt(d.depositTotal)}</span></div>`:''}
+      <div class="summary-row" style="border-top:2px solid var(--ioc-navy);padding-top:8px;margin-top:4px"><span class="summary-lbl" style="font-size:14px"><b>GROSS TOTAL</b></span><span class="summary-val" style="font-size:16px;color:var(--ioc-navy)"><b>₹${fmt(d.grossTotal)}</b></span></div>
+    </div>
+
+    <!-- DEDUCTIONS — every single line -->
+    <div class="report-section">
+      <div class="report-section-title" style="color:var(--ioc-red)">🔻 Deductions (Every Entry)</div>
+      ${(d.paytmTotal||0)?`<div class="summary-row"><span class="summary-lbl">Paytm Collection</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.paytmTotal)}</span></div>`:''}
+      ${(d.otp||0)?`<div class="summary-row"><span class="summary-lbl">OTP</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.otp)}</span></div>`:''}
+      ${(d.tanker||0)?`<div class="summary-row"><span class="summary-lbl">Tanker${d.tankerName?' — '+d.tankerName:''}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.tanker)}</span></div>`:''}
+      ${(d.acctTr||0)?`<div class="summary-row"><span class="summary-lbl">Account Transfer</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.acctTr)}</span></div>`:''}
+      ${(d.hoBank||0)?`<div class="summary-row"><span class="summary-lbl">HO / Bank Deposit</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.hoBank)}</span></div>`:''}
+      ${(d.advItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Advance — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
+      ${(d.creditSaleItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Credit Sale — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
+      ${(d.pumpExpItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Expense — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
+      <div class="summary-row" style="border-top:2px solid var(--ioc-red);padding-top:8px;margin-top:4px"><span class="summary-lbl" style="font-size:14px"><b>TOTAL DEDUCTIONS</b></span><span class="summary-val" style="font-size:16px;color:var(--ioc-red)"><b>₹${fmt(d.totalDeductions)}</b></span></div>
+    </div>
+
+    <!-- DETAILED TABLES -->
+    ${mobilRows?`<div class="report-section"><div class="report-section-title">🔧 Mobil Sales</div><table class="rtable"><thead><tr><th>Product</th><th>Qty</th><th>Amount</th></tr></thead><tbody>${mobilRows}</tbody><tfoot><tr><td colspan="2"><b>Total</b></td><td class="right"><b>₹${fmt(d.mobilTotal)}</b></td></tr></tfoot></table></div>`:''}
+    ${depRows?`<div class="report-section"><div class="report-section-title">💵 Deposits Received</div><table class="rtable"><thead><tr><th>Party</th><th>Amount</th></tr></thead><tbody>${depRows}</tbody></table></div>`:''}
+    ${csRows?`<div class="report-section"><div class="report-section-title" style="color:var(--ioc-red)">💳 Credit Sales (Deducted from Cash)</div><table class="rtable"><thead><tr><th>Party</th><th>Amount</th></tr></thead><tbody>${csRows}</tbody><tfoot><tr><td><b>Total</b></td><td class="right" style="color:var(--ioc-red)"><b>₹${fmt(d.csTotal)}</b></td></tr></tfoot></table></div>`:''}
+    ${advRows?`<div class="report-section"><div class="report-section-title">👷 Advances Given</div><table class="rtable"><thead><tr><th>Employee</th><th>Amount</th></tr></thead><tbody>${advRows}</tbody><tfoot><tr><td><b>Total</b></td><td class="right"><b>₹${fmt(d.advTotal)}</b></td></tr></tfoot></table></div>`:''}
+    ${expRows?`<div class="report-section"><div class="report-section-title">🧾 Pump Expenses</div><table class="rtable"><thead><tr><th>Category</th><th>Amount</th></tr></thead><tbody>${expRows}</tbody><tfoot><tr><td><b>Total</b></td><td class="right"><b>₹${fmt(d.pumpExpTotal)}</b></td></tr></tfoot></table></div>`:''}
+
+    <!-- FINAL CASH BOX -->
+    <div class="final-cash-box">
+      <div>
+        <div class="fc-label">Final Cash in Hand</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:4px">Gross ₹${fmt(d.grossTotal)} − Deductions ₹${fmt(d.totalDeductions)}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:4px">→ Next Day BF: ₹${fmt(d.finalCash)}</div>
+        ${currentRole==='owner'?`<div style="font-size:12px;color:rgba(100,255,150,.8);margin-top:4px">Est. Profit: ₹${fmt(d.netProfit||0)}</div>`:''}
+      </div>
+      <div class="fc-val">₹${fmt(d.finalCash)}</div>
+    </div>
+  </div>
+  <div class="btn-row" style="margin-top:12px">
+    <button class="btn-secondary" onclick="document.getElementById('historyDetail').style.display='none';window.scrollTo({top:0,behavior:'smooth'})">← Back</button>
+    <button class="btn-secondary" onclick="window.print()">🖨️ Print</button>
+  </div>`;
 }
 
 // ── QUERY ─────────────────────────────────────────────────────────────────────
@@ -2496,6 +2794,26 @@ function mgrLocalAnswer(q){
     const exp=monthRecs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
     const adv=monthRecs.reduce((a,r)=>a+(r.advTotal||0),0);
     return`This month (${monthRecs.length} days):\nHSD: ${hsd.toFixed(1)}L | MS: ${ms.toFixed(1)}L\nFuel: ₹${fmt(fuel)}\nCash: ₹${fmt(cash)}\nExpenses: ₹${fmt(exp)}\nAdvances: ₹${fmt(adv)}`;
+  }
+  // ── STAFF QUERIES — "all advances", "who got advance", "staff advance"
+  if(q.includes('all advance')||q.includes('staff advance')||q.includes('who got')){
+    const advMap={};allRecs.forEach(r=>(r.advItems||[]).forEach(x=>{advMap[x.name]=(advMap[x.name]||0)+x.amt;}));
+    const sorted=Object.entries(advMap).sort(([,a],[,b])=>b-a);
+    const total=sorted.reduce((a,[,v])=>a+v,0);
+    return`👷 All Staff Advances:\nTotal: ₹${fmt(total)}\n\n${sorted.map(([n,a])=>`${n}: ₹${fmt(a)}`).join('\n')||'None'}`;
+  }
+  // HO/Bank summary
+  if(q.includes('ho')||q.includes('bank')||q.includes('deposit')){
+    const total=monthRecs.reduce((a,r)=>a+(r.hoBank||0),0);
+    const allTotal=allRecs.reduce((a,r)=>a+(r.hoBank||0),0);
+    const lines=monthRecs.filter(r=>r.hoBank>0).map(r=>`${r.date}: ₹${fmt(r.hoBank)}`).join('\n');
+    return`🏦 HO/Bank Deposits:\nThis month: ₹${fmt(total)}\nAll time: ₹${fmt(allTotal)}\n\n${lines||'No deposits this month'}`;
+  }
+  // OTP summary
+  if(q.includes('otp')){
+    const total=monthRecs.reduce((a,r)=>a+(r.otp||0),0);
+    const lines=monthRecs.filter(r=>r.otp>0).map(r=>`${r.date}: ₹${fmt(r.otp)}`).join('\n');
+    return`📱 OTP This Month: ₹${fmt(total)}\n\n${lines||'None'}`;
   }
   // Smart default — show today's summary or last record
   const lastRec=allRecs[0];
@@ -2695,17 +3013,56 @@ function bellaLocalAnswer(q){
 
   // Credit
   if(q.includes('credit')){
-    // Check if specific party name mentioned
     const allParties=[...new Set(creditData.map(t=>t.party.toLowerCase()))];
     const mentionedParty=allParties.find(p=>q.includes(p.toLowerCase())||p.toLowerCase().split(' ').some(part=>part.length>2&&q.includes(part)));
     if(mentionedParty){
       const txns=creditData.filter(t=>t.party.toLowerCase()===mentionedParty);
       const total=txns.filter(t=>t.type==='credit').reduce((a,t)=>a+t.amt,0);
       const paid=txns.filter(t=>t.type==='payment').reduce((a,t)=>a+t.amt,0);
-      return`${txns[0]?.party||mentionedParty.toUpperCase()}:\nTotal Credit: ₹${fmt(total)}\nTotal Paid: ₹${fmt(paid)}\nBalance Due: ₹${fmt(total-paid)}`;
+      const balance=total-paid;
+      const history=txns.slice(-5).map(t=>`${t.date} ${t.type==='credit'?'Credit':'Paid'}: ₹${fmt(t.amt)}`).join('\n');
+      return`💳 ${txns[0]?.party||mentionedParty.toUpperCase()}:\n\nTotal Credit Given: ₹${fmt(total)}\nTotal Paid Back: ₹${fmt(paid)}\n${balance>0?`⚠️ Balance Due: ₹${fmt(balance)}`:`✅ Fully Paid`}\n\nRecent transactions:\n${history}`;
+    }
+    // Show all outstanding balances
+    const partyMap={};
+    creditData.forEach(t=>{
+      if(!partyMap[t.party])partyMap[t.party]={credit:0,paid:0};
+      if(t.type==='credit')partyMap[t.party].credit+=t.amt;
+      else partyMap[t.party].paid+=t.amt;
+    });
+    const outstanding=Object.entries(partyMap).filter(([,v])=>v.credit-v.paid>0).sort(([,a],[,b])=>(b.credit-b.paid)-(a.credit-a.paid));
+    const totalOut=outstanding.reduce((a,[,v])=>a+(v.credit-v.paid),0);
+    if(outstanding.length){
+      const lines=outstanding.map(([n,v])=>`  • ${n}: ₹${fmt(v.credit-v.paid)}`).join('\n');
+      return`💳 Outstanding Credit Balances:\n\nTotal Due: ₹${fmt(totalOut)}\n\n${lines}`;
     }
     const total=monthRecs.reduce((a,r)=>a+(r.csTotal||0),0);
-    return`This month credit sales: ₹${fmt(total)}`;
+    return`This month credit sales: ₹${fmt(total)}\nNo outstanding balances.`;
+  }
+
+  // Profit trend / analysis
+  if(q.includes('trend')||q.includes('analysis')||q.includes('compare')){
+    const ms3=new Date();ms3.setDate(1);const mSt=ms3.toISOString().slice(0,10);
+    const prevM=new Date();prevM.setMonth(prevM.getMonth()-1);prevM.setDate(1);const pmSt=prevM.toISOString().slice(0,10);
+    const prevMEnd=new Date();prevMEnd.setDate(0);const pmEnd=prevMEnd.toISOString().slice(0,10);
+    const curRecs=allRecs.filter(r=>r.date>=mSt);
+    const prevRecs=allRecs.filter(r=>r.date>=pmSt&&r.date<=pmEnd);
+    const curP=curRecs.reduce((a,r)=>a+(r.netProfit||0),0);
+    const prevP=prevRecs.reduce((a,r)=>a+(r.netProfit||0),0);
+    const curF=curRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
+    const prevF=prevRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
+    const growth=prevP?((curP-prevP)/Math.abs(prevP)*100):null;
+    return`📈 Month Comparison:\n\nThis Month (${curRecs.length} days):\nProfit: ₹${fmt(curP)}\nFuel: ₹${fmt(curF)}\n\nLast Month (${prevRecs.length} days):\nProfit: ₹${fmt(prevP)}\nFuel: ₹${fmt(prevF)}\n\n${growth!==null?(growth>=0?`📈 Profit UP ${growth.toFixed(1)}% 🎉`:`📉 Profit DOWN ${Math.abs(growth).toFixed(1)}%`):'Not enough data for comparison'}`;
+  }
+
+  // Stock / inventory check
+  if(q.includes('stock')||q.includes('dip')||q.includes('inventory')){
+    const lastInsp=Object.entries(inspectData).sort((a,b)=>b[0].localeCompare(a[0]))[0];
+    if(lastInsp){
+      const [date,d]=lastInsp;
+      return`🛢️ Last Stock Reading (${date}):\n\nHSD Dip: ${(d.hsdDip||0).toFixed(2)} L ${Math.abs(d.hsdDiff||0)>5?'⚠️ Variance: '+d.hsdDiff?.toFixed(2)+'L':' ✅'}\nMS Dip: ${(d.msDip||0).toFixed(2)} L ${Math.abs(d.msDiff||0)>5?'⚠️ Variance: '+d.msDiff?.toFixed(2)+'L':' ✅'}`;
+    }
+    return'No inspection data found. Please save daily inspections.';
   }
 
   // Summary / all
