@@ -325,6 +325,10 @@ input:focus{border-color:var(--ioc-red);box-shadow:0 0 0 2px rgba(208,30,30,.1);
     </div>
     <div id="calGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px"></div>
   </div>
+  <div class="card" style="margin-top:12px">
+    <div class="card-title">📋 Records This Month</div>
+    <div id="calRecordList"></div>
+  </div>
   <div id="historyDetail" style="display:none"></div>
 </div>
 
@@ -2692,7 +2696,22 @@ async function resetAll(){
 
 // ── CALENDAR ──────────────────────────────────────────────────────────────────
 let calYear=new Date().getFullYear(),calMonth=new Date().getMonth();
-function renderHistory(){if(cloudData.records.length){const l=cloudData.records[0].date;calYear=parseInt(l.slice(0,4));calMonth=parseInt(l.slice(5,7))-1;}renderCalendar();}
+function renderHistory(){
+  // Always start at current month — if no records this month, go to latest record's month
+  const today=new Date();
+  calYear=today.getFullYear();calMonth=today.getMonth();
+  if(cloudData.records.length){
+    const monthStr=`${calYear}-${String(calMonth+1).padStart(2,'0')}`;
+    const hasThisMonth=cloudData.records.some(r=>r.date.startsWith(monthStr));
+    if(!hasThisMonth){
+      // Go to latest record month
+      const latest=cloudData.records.slice().sort((a,b)=>b.date.localeCompare(a.date))[0];
+      calYear=parseInt(latest.date.slice(0,4));
+      calMonth=parseInt(latest.date.slice(5,7))-1;
+    }
+  }
+  renderCalendar();
+}
 function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCalendar();}
 function calNext(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderCalendar();}
 function shortFmt(n){n=Number(n||0);if(n>=100000)return(n/100000).toFixed(1)+'L';if(n>=1000)return(n/1000).toFixed(1)+'K';return n.toFixed(0);}
@@ -2718,7 +2737,27 @@ function renderCalendar(){
       ${rec?`<div style="font-size:9px;font-weight:700;color:var(--green)">₹${shortFmt(rec.finalCash)}</div><div style="font-size:9px;color:var(--ink-light)">${(rec.hsdNet||0).toFixed(0)}+${(rec.msNet||0).toFixed(0)}L</div><div style="position:absolute;top:5px;right:6px;width:6px;height:6px;border-radius:50%;background:var(--green)"></div>`:''}
     </div>`;
   }
-  document.getElementById('calGrid').innerHTML=cells;document.getElementById('historyDetail').style.display='none';
+  document.getElementById('calGrid').innerHTML=cells;
+  document.getElementById('historyDetail').style.display='none';
+
+  // Show record list below calendar for easy access
+  const listEl=document.getElementById('calRecordList');
+  if(listEl){
+    const sortedRecs=mR.slice().sort((a,b)=>b.date.localeCompare(a.date));
+    listEl.innerHTML=sortedRecs.length?sortedRecs.map((r,i)=>`
+      <div onclick="showHistDetailByDate('${r.date}')" class="hist-item" style="cursor:pointer">
+        <div>
+          <div class="hist-date">${new Date(r.date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'})}</div>
+          <div class="hist-sub">HSD: ${(r.hsdNet||0).toFixed(0)}L · MS: ${(r.msNet||0).toFixed(0)}L · Paytm: ₹${fmt(r.paytmTotal||0)}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--ink-light)">Final Cash</div>
+          <div style="font-size:15px;font-weight:700;color:var(--ioc-navy)">₹${fmt(r.finalCash)}</div>
+          ${currentRole==='owner'?`<div style="font-size:11px;color:var(--green)">P: ₹${fmt(r.netProfit||0)}</div>`:''}
+        </div>
+      </div>`).join('')
+    :'<div style="text-align:center;padding:20px;color:var(--ink-light);font-size:13px">No records for this month.<br>Use ‹ to go to previous months.</div>';
+  }
 }
 function showHistDetailByDate(ds){const d=cloudData.records.find(r=>r.date===ds);if(d)showHistDetail(cloudData.records.indexOf(d));}
 function showHistDetail(i){
