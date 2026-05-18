@@ -2344,6 +2344,27 @@ function mgrLocalAnswer(q){
   const monthRecs=cloudData.records.filter(r=>r.date>=mStart&&r.date<=today);
   const allRecs=cloudData.records;
 
+  // ── DATE DETECTION — "sale on 14th", "14 may", "on 8th" etc
+  const dateMatch=q.match(/(\d{1,2})(st|nd|rd|th)?(\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*)?/i);
+  if(dateMatch){
+    const day=parseInt(dateMatch[1]);
+    if(day>=1&&day<=31){
+      const yr=new Date().getFullYear();
+      const mo=new Date().getMonth()+1;
+      const dateStr=`${yr}-${String(mo).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const r=allRecs.find(r=>r.date===dateStr);
+      if(r){
+        return`📅 ${r.date} Report:\n\nHSD: ${(r.hsdNet||0).toFixed(2)} L @ ₹${r.hsdRsp} = ₹${fmt(r.hsdAmt)}\nMS: ${(r.msNet||0).toFixed(2)} L @ ₹${r.msRsp} = ₹${fmt(r.msAmt)}\nFuel Total: ₹${fmt(r.fuelTotal)}\nPaytm: ₹${fmt(r.paytmTotal||0)}\nOTP: ₹${fmt(r.otp||0)}\nAdvances: ₹${fmt(r.advTotal||0)}\nExpenses: ₹${fmt(r.pumpExpTotal||0)}\nHO/Bank: ₹${fmt(r.hoBank||0)}\nCredit Sales: ₹${fmt(r.csTotal||0)}\n\n💰 Final Cash: ₹${fmt(r.finalCash)}`;
+      }
+    }
+  }
+
+  // ── "sale" or "sales" alone — show recent
+  if(q.includes('sale')||q.includes('sell')){
+    const lines=allRecs.slice(0,7).map(r=>`${r.date}: HSD ${(r.hsdNet||0).toFixed(1)}L MS ${(r.msNet||0).toFixed(1)}L → ₹${fmt(r.fuelTotal)}`).join('\n');
+    return`Recent Sales:\n${lines}`;
+  }
+
   if(q.includes('final cash')||q.includes('cash')||q.includes('balance')){
     if(q.includes('today')){const r=allRecs.find(r=>r.date===today);return r?`Today (${today}) Final Cash: ₹${fmt(r.finalCash)}`:`No record for today yet.`;}
     const lines=allRecs.slice(0,7).map(r=>`${r.date}: ₹${fmt(r.finalCash)}`).join('\n');
@@ -2447,6 +2468,27 @@ function bellaLocalAnswer(q){
   const ms2=new Date();ms2.setDate(1);const mStart=ms2.toISOString().slice(0,10);
   const monthRecs=cloudData.records.filter(r=>r.date>=mStart&&r.date<=today);
   const allRecs=cloudData.records;
+
+  // ── DATE DETECTION — "sale on 14th", "14 may", "8th may" etc
+  const dateMatch=q.match(/(\d{1,2})(st|nd|rd|th)?(\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*)?/i);
+  if(dateMatch){
+    const day=parseInt(dateMatch[1]);
+    if(day>=1&&day<=31){
+      const yr=new Date().getFullYear();
+      const mo=new Date().getMonth()+1;
+      const dateStr=`${yr}-${String(mo).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const r=allRecs.find(r=>r.date===dateStr);
+      if(r){
+        return`📅 ${r.date} Full Report:\n\nFuel:\nHSD: ${(r.hsdNet||0).toFixed(2)} L @ ₹${r.hsdRsp} = ₹${fmt(r.hsdAmt)}\nMS: ${(r.msNet||0).toFixed(2)} L @ ₹${r.msRsp} = ₹${fmt(r.msAmt)}\nFuel Total: ₹${fmt(r.fuelTotal)}\n\nDeductions:\nPaytm: ₹${fmt(r.paytmTotal||0)}\nOTP: ₹${fmt(r.otp||0)}\nAdvances: ₹${fmt(r.advTotal||0)}\nExpenses: ₹${fmt(r.pumpExpTotal||0)}\nHO/Bank: ₹${fmt(r.hoBank||0)}\nCredit Sales: ₹${fmt(r.csTotal||0)}\nTanker: ₹${fmt(r.tanker||0)}\n\n💰 Final Cash: ₹${fmt(r.finalCash)}\n📈 Est. Profit: ₹${fmt(r.netProfit||0)}`;
+      }
+    }
+  }
+
+  // ── "sale" or "sales" alone — show recent
+  if((q.includes('sale')||q.includes('sell'))&&!q.includes('credit')){
+    const lines=allRecs.slice(0,7).map(r=>`${r.date}: HSD ${(r.hsdNet||0).toFixed(1)}L MS ${(r.msNet||0).toFixed(1)}L → ₹${fmt(r.fuelTotal)}`).join('\n');
+    return`Recent Sales:\n${lines}`;
+  }
 
   // Final cash / balance forward
   if(q.includes('final cash')||q.includes('cash in hand')||q.includes('balance forward')){
