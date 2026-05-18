@@ -990,77 +990,214 @@ async function saveAttendance(){
 
 // ── MODULE 3: INSPECTION ──────────────────────────────────────────────────────
 function renderInspection(){
-  const today=todayKey0(),saved=inspectData[today]||{};
+  const today=todayKey0();
+  const saved=inspectData[today]||{};
+  // Get today's sales record for meter readings
   const todayRec=cloudData.records.find(r=>r.date===today)||cloudData.records[0];
-  // Day 1 meter totals (the initial meter readings you provided)
-  const hsdDay0Total=HSD_DAY0.reduce((a,v)=>a+v,0);
-  const msDay0Total=MS_DAY0.reduce((a,v)=>a+v,0);
-  // Total sale from Day 0 to now = current closing MINUS Day 0 base meters
-  const totalHSDSale=NOZZLES_HSD.reduce((a,n,i)=>a+Math.max(0,(cloudData.prevClosing[n]||0)-(HSD_DAY0[i]||0)),0);
-  const totalMSSale=NOZZLES_MS.reduce((a,n,i)=>a+Math.max(0,(cloudData.prevClosing[n]||0)-(MS_DAY0[i]||0)),0);
-  // Today's closing meter total from saved record
-  const hsdClosingTotal=todayRec?NOZZLES_HSD.reduce((a,n)=>a+(todayRec['cl_'+n]||0),0):0;
-  const msClosingTotal=todayRec?NOZZLES_MS.reduce((a,n)=>a+(todayRec['cl_'+n]||0),0):0;
+  // Total HSD sale from meters
+  const hsdSaleToday=todayRec?NOZZLES_HSD.reduce((a,n)=>a+(todayRec['sale_'+n]||0),0):0;
+  const msSaleToday=todayRec?NOZZLES_MS.reduce((a,n)=>a+(todayRec['sale_'+n]||0),0):0;
+  // Net sale (after testing)
+  const hsdNetToday=todayRec?(todayRec.hsdNet||hsdSaleToday):hsdSaleToday;
+  const msNetToday=todayRec?(todayRec.msNet||msSaleToday):msSaleToday;
+
   document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="backToModules()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
   document.getElementById('stepContent').innerHTML=`
-  <div class="card"><div class="card-title">🔍 Daily Inspection — ${today}</div>
-    <div class="alert-info">OM = Day-1 meter reading (fixed). Closing = today's closing meters from sales. Enter current dip.</div>
-    <div style="margin-bottom:18px">
-      <div style="font-size:12px;font-weight:700;color:var(--ioc-navy);margin-bottom:10px"><span class="tag tag-hsd">HSD</span> Diesel</div>
+  <div class="card">
+    <div class="card-title">🔍 Daily Inspection — ${today}</div>
+    <div class="alert-info" style="margin-bottom:16px">Enter dip readings and received stock. System calculates expected stock and shows variance.</div>
+
+    <!-- HSD SECTION -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;color:var(--ioc-navy);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid var(--ioc-navy-light)"><span class="tag tag-hsd">HSD</span> Diesel Stock Analysis</div>
       <div class="grid3" style="margin-bottom:10px">
-        <div class="field"><div class="lbl">OM — Day 0 Meters (L)</div><input type="number" id="insp_hsd_om" value="${hsdDay0Total.toFixed(2)}" step="0.01" style="background:#f8f8f8;color:var(--ink-light)"></div>
-        <div class="field"><div class="lbl">Closing Meter (L)</div><input type="number" id="insp_hsd_cm" value="${hsdClosingTotal?hsdClosingTotal.toFixed(2):''}" placeholder="From today's sales" step="0.01"></div>
-        <div class="field"><div class="lbl">Current Dip (L)</div><input type="number" id="insp_hsd_dip" value="${saved.hsdDip||''}" placeholder="Enter dip reading" step="0.01"></div>
+        <div class="field">
+          <div class="lbl">Previous Dip (Yesterday L)</div>
+          <input type="number" id="insp_hsd_prevdip" value="${saved.hsdPrevDip||''}" placeholder="Yesterday's dip" step="0.01">
+        </div>
+        <div class="field">
+          <div class="lbl">Received Today (L)</div>
+          <input type="number" id="insp_hsd_recv" value="${saved.hsdRecv||0}" step="0.01" placeholder="0">
+        </div>
+        <div class="field">
+          <div class="lbl">Net Sale Today (L) <span style="color:var(--ink-light);font-weight:400">(auto)</span></div>
+          <input type="number" id="insp_hsd_sale" value="${hsdNetToday.toFixed(2)}" step="0.01" style="background:#f8f9ff">
+        </div>
       </div>
       <div class="grid2">
-        <div class="field"><div class="lbl">Previous Dip (Yesterday's dip)</div><input type="number" id="insp_hsd_prevdip" value="${saved.hsdPrevDip||''}" placeholder="Yesterday's dip reading" step="0.01"></div>
-        <div class="field"><div class="lbl">HSD Received Today (L)</div><input type="number" id="insp_hsd_recv" value="${saved.hsdRecv||0}" step="0.01"></div>
+        <div class="field">
+          <div class="lbl">Current Dip Reading (L)</div>
+          <input type="number" id="insp_hsd_dip" value="${saved.hsdDip||''}" placeholder="Enter today's dip" step="0.01">
+        </div>
+        <div class="field">
+          <div class="lbl">Testing Done Today (L)</div>
+          <input type="number" id="insp_hsd_test" value="${saved.hsdTest||0}" step="0.01" placeholder="0">
+        </div>
       </div>
-      <div id="insp_hsd_result" style="margin-top:10px;display:none;padding:8px 12px;border-radius:var(--r);background:var(--ioc-navy-light);font-size:12px;color:var(--ioc-navy)"></div>
+      <div id="insp_hsd_result" style="margin-top:10px;display:none"></div>
     </div>
-    <div style="border-top:1px solid var(--ioc-border);padding-top:16px">
-      <div style="font-size:12px;font-weight:700;color:var(--ioc-red);margin-bottom:10px"><span class="tag tag-ms">MS</span> Petrol</div>
+
+    <!-- MS SECTION -->
+    <div>
+      <div style="font-size:13px;font-weight:700;color:var(--ioc-red);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid var(--ioc-red-light)"><span class="tag tag-ms">MS</span> Petrol Stock Analysis</div>
       <div class="grid3" style="margin-bottom:10px">
-        <div class="field"><div class="lbl">OM — Day 0 Meters (L)</div><input type="number" id="insp_ms_om" value="${msDay0Total.toFixed(2)}" step="0.01" style="background:#f8f8f8;color:var(--ink-light)"></div>
-        <div class="field"><div class="lbl">Closing Meter (L)</div><input type="number" id="insp_ms_cm" value="${msClosingTotal?msClosingTotal.toFixed(2):''}" placeholder="From today's sales" step="0.01"></div>
-        <div class="field"><div class="lbl">Current Dip (L)</div><input type="number" id="insp_ms_dip" value="${saved.msDip||''}" placeholder="Enter dip reading" step="0.01"></div>
+        <div class="field">
+          <div class="lbl">Previous Dip (Yesterday L)</div>
+          <input type="number" id="insp_ms_prevdip" value="${saved.msPrevDip||''}" placeholder="Yesterday's dip" step="0.01">
+        </div>
+        <div class="field">
+          <div class="lbl">Received Today (L)</div>
+          <input type="number" id="insp_ms_recv" value="${saved.msRecv||0}" step="0.01" placeholder="0">
+        </div>
+        <div class="field">
+          <div class="lbl">Net Sale Today (L) <span style="color:var(--ink-light);font-weight:400">(auto)</span></div>
+          <input type="number" id="insp_ms_sale" value="${msNetToday.toFixed(2)}" step="0.01" style="background:#f8f9ff">
+        </div>
       </div>
       <div class="grid2">
-        <div class="field"><div class="lbl">Previous Dip (Yesterday's dip)</div><input type="number" id="insp_ms_prevdip" value="${saved.msPrevDip||''}" placeholder="Yesterday's dip reading" step="0.01"></div>
-        <div class="field"><div class="lbl">MS Received Today (L)</div><input type="number" id="insp_ms_recv" value="${saved.msRecv||0}" step="0.01"></div>
+        <div class="field">
+          <div class="lbl">Current Dip Reading (L)</div>
+          <input type="number" id="insp_ms_dip" value="${saved.msDip||''}" placeholder="Enter today's dip" step="0.01">
+        </div>
+        <div class="field">
+          <div class="lbl">Testing Done Today (L)</div>
+          <input type="number" id="insp_ms_test" value="${saved.msTest||0}" step="0.01" placeholder="0">
+        </div>
       </div>
-      <div id="insp_ms_result" style="margin-top:10px;display:none;padding:8px 12px;border-radius:var(--r);background:#FFF0F0;font-size:12px;color:var(--ioc-red)"></div>
+      <div id="insp_ms_result" style="margin-top:10px;display:none"></div>
     </div>
   </div>
-  <div class="card"><div class="card-title">📊 Total Inspection — Day 0 to Now</div>
-    <div class="grid2" style="margin-bottom:12px">
-      <div style="padding:12px;background:var(--ioc-navy-light);border-radius:var(--r)"><div style="font-size:11px;font-weight:700;color:var(--ioc-navy)">HSD Total Sale</div><div style="font-size:16px;font-weight:700;color:var(--ioc-navy)">${fmtL(totalHSDSale)}</div><div style="font-size:10px;color:var(--ink-light);margin-top:2px">Now ${NOZZLES_HSD.reduce((a,n)=>a+(cloudData.prevClosing[n]||0),0).toFixed(0)} − D0 base ${hsdDay0Total.toFixed(0)}</div></div>
-      <div style="padding:12px;background:var(--ioc-red-light);border-radius:var(--r)"><div style="font-size:11px;font-weight:700;color:var(--ioc-red)">MS Total Sale</div><div style="font-size:16px;font-weight:700;color:var(--ioc-red)">${fmtL(totalMSSale)}</div><div style="font-size:10px;color:var(--ink-light);margin-top:2px">Now ${NOZZLES_MS.reduce((a,n)=>a+(cloudData.prevClosing[n]||0),0).toFixed(0)} − D0 base ${msDay0Total.toFixed(0)}</div></div>
-    </div>
-    <div style="font-size:12px;color:var(--ink-light)">
-      ${NOZZLES_HSD.map((n,i)=>`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed var(--ioc-border)"><span>${n}: D0=${HSD_DAY0[i]} → Now=${cloudData.prevClosing[n]||0}</span><span style="font-weight:600;color:var(--ioc-navy)">${fmtL(Math.max(0,(cloudData.prevClosing[n]||0)-(HSD_DAY0[i]||0)))}</span></div>`).join('')}
-      ${NOZZLES_MS.map((n,i)=>`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed var(--ioc-border)"><span>${n}: D0=${MS_DAY0[i]} → Now=${cloudData.prevClosing[n]||0}</span><span style="font-weight:600;color:var(--ioc-red)">${fmtL(Math.max(0,(cloudData.prevClosing[n]||0)-(MS_DAY0[i]||0)))}</span></div>`).join('')}
+
+  <!-- STOCK ANALYSIS RESULT -->
+  <div id="stockAnalysisCard" style="display:none" class="card">
+    <div class="card-title">📊 Stock Analysis Report</div>
+    <div id="stockAnalysisContent"></div>
+  </div>
+
+  <!-- HISTORICAL DIP TABLE -->
+  <div class="card">
+    <div class="card-title">📅 Recent Inspection History</div>
+    <div style="overflow-x:auto">
+      <table class="rtable">
+        <thead><tr><th>Date</th><th>HSD Dip</th><th>HSD Recv</th><th>HSD Diff</th><th>MS Dip</th><th>MS Recv</th><th>MS Diff</th></tr></thead>
+        <tbody>
+          ${Object.entries(inspectData).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,10).map(([date,d])=>`
+            <tr>
+              <td>${date}</td>
+              <td>${(d.hsdDip||0).toFixed(2)} L</td>
+              <td>${(d.hsdRecv||0).toFixed(2)} L</td>
+              <td style="color:${Math.abs(d.hsdDiff||0)>5?'var(--ioc-red)':'var(--green)'};font-weight:600">${d.hsdDiff!=null?(d.hsdDiff>0?'+':'')+d.hsdDiff.toFixed(2)+' L':'—'}</td>
+              <td>${(d.msDip||0).toFixed(2)} L</td>
+              <td>${(d.msRecv||0).toFixed(2)} L</td>
+              <td style="color:${Math.abs(d.msDiff||0)>5?'var(--ioc-red)':'var(--green)'};font-weight:600">${d.msDiff!=null?(d.msDiff>0?'+':'')+d.msDiff.toFixed(2)+' L':'—'}</td>
+            </tr>
+          `).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--ink-light);padding:16px">No history yet</td></tr>'}
+        </tbody>
+      </table>
     </div>
   </div>
-  <div class="btn-row"><button class="btn-primary" onclick="calcInspection()">📊 Calculate</button><button class="btn-secondary" onclick="saveInspection()">💾 Save</button></div>
+
+  <div class="btn-row">
+    <button class="btn-primary" onclick="calcInspection()">📊 Calculate Stock</button>
+    <button class="btn-secondary" onclick="saveInspection()">💾 Save</button>
+  </div>
   <div id="inspMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>`;
 }
+
 function calcInspection(){
-  const hsdSale=Math.max(0,gv('insp_hsd_cm')-gv('insp_hsd_om'));
-  const hsdCalc=gv('insp_hsd_prevdip')+gv('insp_hsd_recv')-hsdSale;
-  const hsdDiff=gv('insp_hsd_dip')-hsdCalc;
-  const hEl=document.getElementById('insp_hsd_result');hEl.style.display='';
-  hEl.innerHTML=`<b>HSD:</b> OM=${fmtL(gv('insp_hsd_prevdip'))} + Recv=${fmtL(gv('insp_hsd_recv'))} − Sale=${fmtL(hsdSale)} = Expected <b>${fmtL(hsdCalc)}</b> | Actual ${fmtL(gv('insp_hsd_dip'))} | <b style="color:${Math.abs(hsdDiff)>5?'var(--ioc-red)':'var(--green)'}">Diff: ${fmtL(hsdDiff)}</b>`;
-  const msSale=Math.max(0,gv('insp_ms_cm')-gv('insp_ms_om'));
-  const msCalc=gv('insp_ms_prevdip')+gv('insp_ms_recv')-msSale;
-  const msDiff=gv('insp_ms_dip')-msCalc;
-  const mEl=document.getElementById('insp_ms_result');mEl.style.display='';
-  mEl.innerHTML=`<b>MS:</b> OM=${fmtL(gv('insp_ms_prevdip'))} + Recv=${fmtL(gv('insp_ms_recv'))} − Sale=${fmtL(msSale)} = Expected <b>${fmtL(msCalc)}</b> | Actual ${fmtL(gv('insp_ms_dip'))} | <b style="color:${Math.abs(msDiff)>5?'var(--ioc-red)':'var(--green)'}">Diff: ${fmtL(msDiff)}</b>`;
+  // HSD
+  const hsdPrevDip=gv('insp_hsd_prevdip');
+  const hsdRecv=gv('insp_hsd_recv');
+  const hsdSale=gv('insp_hsd_sale');
+  const hsdTest=gv('insp_hsd_test');
+  const hsdDip=gv('insp_hsd_dip');
+  // Expected = PrevDip + Received - Sale - Testing
+  const hsdExpected=hsdPrevDip+hsdRecv-hsdSale-hsdTest;
+  const hsdDiff=hsdDip-hsdExpected;
+  const hsdOk=Math.abs(hsdDiff)<=5;
+
+  // MS
+  const msPrevDip=gv('insp_ms_prevdip');
+  const msRecv=gv('insp_ms_recv');
+  const msSale=gv('insp_ms_sale');
+  const msTest=gv('insp_ms_test');
+  const msDip=gv('insp_ms_dip');
+  const msExpected=msPrevDip+msRecv-msSale-msTest;
+  const msDiff=msDip-msExpected;
+  const msOk=Math.abs(msDiff)<=5;
+
+  // Show inline results
+  const hEl=document.getElementById('insp_hsd_result');
+  hEl.style.display='';
+  hEl.innerHTML=`
+    <div style="padding:10px 14px;border-radius:var(--r);background:${hsdOk?'var(--ioc-navy-light)':'var(--ioc-red-light)'};border-left:3px solid ${hsdOk?'var(--ioc-navy)':'var(--ioc-red)'}">
+      <div style="font-size:12px;font-weight:700;color:${hsdOk?'var(--ioc-navy)':'var(--ioc-red)'};margin-bottom:4px">HSD: ${hsdOk?'✅ STOCK OK':'⚠️ VARIANCE DETECTED'}</div>
+      <div style="font-size:11px;color:var(--ink)">Prev Dip ${fmtL(hsdPrevDip)} + Recv ${fmtL(hsdRecv)} − Sale ${fmtL(hsdSale)} − Test ${fmtL(hsdTest)} = Expected <b>${fmtL(hsdExpected)}</b></div>
+      <div style="font-size:11px;color:var(--ink);margin-top:2px">Actual Dip: <b>${fmtL(hsdDip)}</b> | Difference: <b style="color:${hsdOk?'var(--green)':'var(--ioc-red)'}">${hsdDiff>=0?'+':''}${fmtL(hsdDiff)}</b></div>
+    </div>`;
+
+  const mEl=document.getElementById('insp_ms_result');
+  mEl.style.display='';
+  mEl.innerHTML=`
+    <div style="padding:10px 14px;border-radius:var(--r);background:${msOk?'#f0fff4':'var(--ioc-red-light)'};border-left:3px solid ${msOk?'var(--green)':'var(--ioc-red)'}">
+      <div style="font-size:12px;font-weight:700;color:${msOk?'var(--green)':'var(--ioc-red)'};margin-bottom:4px">MS: ${msOk?'✅ STOCK OK':'⚠️ VARIANCE DETECTED'}</div>
+      <div style="font-size:11px;color:var(--ink)">Prev Dip ${fmtL(msPrevDip)} + Recv ${fmtL(msRecv)} − Sale ${fmtL(msSale)} − Test ${fmtL(msTest)} = Expected <b>${fmtL(msExpected)}</b></div>
+      <div style="font-size:11px;color:var(--ink);margin-top:2px">Actual Dip: <b>${fmtL(msDip)}</b> | Difference: <b style="color:${msOk?'var(--green)':'var(--ioc-red)'}">${msDiff>=0?'+':''}${fmtL(msDiff)}</b></div>
+    </div>`;
+
+  // Full stock analysis card
+  const card=document.getElementById('stockAnalysisCard');
+  const content=document.getElementById('stockAnalysisContent');
+  card.style.display='';
+  content.innerHTML=`
+    <div class="grid2" style="margin-bottom:16px">
+      <div style="padding:14px;background:${hsdOk?'var(--ioc-navy-light)':'var(--ioc-red-light)'};border-radius:var(--r);border:1px solid ${hsdOk?'var(--ioc-navy)':'var(--ioc-red)'}">
+        <div style="font-size:11px;font-weight:700;color:var(--ink-light);text-transform:uppercase;margin-bottom:8px">HSD Stock</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Opening Dip</span><span><b>${fmtL(hsdPrevDip)}</b></span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--green)"><span>+ Received</span><span><b>+${fmtL(hsdRecv)}</b></span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--ioc-red)"><span>− Net Sale</span><span><b>−${fmtL(hsdSale)}</b></span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--ioc-red)"><span>− Testing</span><span><b>−${fmtL(hsdTest)}</b></span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding:6px 0;border-top:1px solid var(--ioc-border);margin-top:4px"><span>Expected Dip</span><span>${fmtL(hsdExpected)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding:3px 0"><span>Actual Dip</span><span>${fmtL(hsdDip)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;padding:8px 0;border-top:2px solid ${hsdOk?'var(--ioc-navy)':'var(--ioc-red)'};margin-top:6px;color:${hsdOk?'var(--green)':'var(--ioc-red)'}"><span>Variance</span><span>${hsdDiff>=0?'+':''}${fmtL(hsdDiff)}</span></div>
+        <div style="text-align:center;font-size:13px;font-weight:700;padding:6px;border-radius:var(--r);background:${hsdOk?'var(--green)':'var(--ioc-red)'};color:#fff;margin-top:4px">${hsdOk?'✅ STOCK OK':'⚠️ CHECK STOCK'}</div>
+      </div>
+      <div style="padding:14px;background:${msOk?'#f0fff4':'var(--ioc-red-light)'};border-radius:var(--r);border:1px solid ${msOk?'var(--green)':'var(--ioc-red)'}">
+        <div style="font-size:11px;font-weight:700;color:var(--ink-light);text-transform:uppercase;margin-bottom:8px">MS Stock</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Opening Dip</span><span><b>${fmtL(msPrevDip)}</b></span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--green)"><span>+ Received</span><span><b>+${fmtL(msRecv)}</b></span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--ioc-red)"><span>− Net Sale</span><span><b>−${fmtL(msSale)}</b></span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--ioc-red)"><span>− Testing</span><span><b>−${fmtL(msTest)}</b></span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding:6px 0;border-top:1px solid var(--ioc-border);margin-top:4px"><span>Expected Dip</span><span>${fmtL(msExpected)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding:3px 0"><span>Actual Dip</span><span>${fmtL(msDip)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;padding:8px 0;border-top:2px solid ${msOk?'var(--green)':'var(--ioc-red)'};margin-top:6px;color:${msOk?'var(--green)':'var(--ioc-red)'}"><span>Variance</span><span>${msDiff>=0?'+':''}${fmtL(msDiff)}</span></div>
+        <div style="text-align:center;font-size:13px;font-weight:700;padding:6px;border-radius:var(--r);background:${msOk?'var(--green)':'var(--ioc-red)'};color:#fff;margin-top:4px">${msOk?'✅ STOCK OK':'⚠️ CHECK STOCK'}</div>
+      </div>
+    </div>
+    <div style="padding:10px 14px;background:${hsdOk&&msOk?'#f0fff4':'#FFF5F5'};border-radius:var(--r);text-align:center;font-size:13px;font-weight:700;color:${hsdOk&&msOk?'var(--green)':'var(--ioc-red)'}">
+      ${hsdOk&&msOk?'✅ All stocks verified — No variance detected':'⚠️ Variance detected — Please recheck dip readings'}
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:var(--ink-light);text-align:center">Formula: Expected Dip = Opening Dip + Received − Net Sale − Testing &nbsp;|&nbsp; Tolerance: ±5 L</div>`;
+
+  // Store diffs for saving
+  window._inspDiffs={hsdDiff,msDiff};
 }
+
 async function saveInspection(){
   const today=todayKey0();
-  inspectData[today]={hsdDip:gv('insp_hsd_dip'),hsdPrevDip:gv('insp_hsd_prevdip'),hsdRecv:gv('insp_hsd_recv'),msDip:gv('insp_ms_dip'),msPrevDip:gv('insp_ms_prevdip'),msRecv:gv('insp_ms_recv'),savedAt:new Date().toISOString()};
-  await cloudSet(STORE_KEY_INSPECT,inspectData);document.getElementById('inspMsg').textContent='✅ Inspection saved!';
+  const diffs=window._inspDiffs||{};
+  inspectData[today]={
+    hsdDip:gv('insp_hsd_dip'),hsdPrevDip:gv('insp_hsd_prevdip'),
+    hsdRecv:gv('insp_hsd_recv'),hsdSale:gv('insp_hsd_sale'),
+    hsdTest:gv('insp_hsd_test'),hsdDiff:diffs.hsdDiff||0,
+    msDip:gv('insp_ms_dip'),msPrevDip:gv('insp_ms_prevdip'),
+    msRecv:gv('insp_ms_recv'),msSale:gv('insp_ms_sale'),
+    msTest:gv('insp_ms_test'),msDiff:diffs.msDiff||0,
+    savedAt:new Date().toISOString()
+  };
+  await cloudSet(STORE_KEY_INSPECT,inspectData);
+  document.getElementById('inspMsg').textContent='✅ Inspection saved!';
+  setTimeout(()=>document.getElementById('inspMsg').textContent='',3000);
 }
 
 // ── MODULE 4: TESTING ─────────────────────────────────────────────────────────
