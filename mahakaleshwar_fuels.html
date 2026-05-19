@@ -1019,56 +1019,131 @@ function renderAttendance(){
 function renderAttContent(){
   const dateKey=attSelectedDate;
   const saved=attData[dateKey]||{};
-  const rows=staffList.map((name,i)=>{
-    const st=saved[name]||{status:'present',adv:0,advNote:''};
-    return `<div style="background:#fff;border:1px solid var(--ioc-border);border-radius:var(--r);padding:12px 14px;margin-bottom:8px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div style="display:flex;align-items:center;gap:8px;min-width:160px">
-          <span style="font-size:13px;font-weight:600;color:var(--ioc-navy)">${name}</span>
-          <button onclick="removeStaff('${name.replace(/'/g,"\\'")}',${i})" style="background:none;border:none;cursor:pointer;color:var(--ink-light);font-size:11px;padding:2px 5px;border-radius:var(--r);transition:all .15s" onmouseover="this.style.color='var(--ioc-red)'" onmouseout="this.style.color='var(--ink-light)'" title="Remove employee">✕</button>
-        </div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap">
-          ${['present','absent','double','half-day'].map(s=>`<label id="lbl_${i}_${s}" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;padding:5px 10px;border-radius:20px;border:1px solid ${st.status===s?'var(--ioc-red)':'var(--ioc-border)'};background:${st.status===s?'var(--ioc-red-light)':'#fff'};font-size:11px;font-weight:600;color:${st.status===s?'var(--ioc-red)':'var(--ink-light)'};transition:all .15s"><input type="radio" name="att_${i}" value="${s}" ${st.status===s?'checked':''} onchange="attChange(${i},'${name.replace(/'/g,"\\'")}',this.value)" style="display:none">${s.charAt(0).toUpperCase()+s.slice(1).replace('-',' ')}</label>`).join('')}
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:10px;align-items:flex-end">
-        <div class="field" style="flex:1"><div class="lbl">Advance (₹)</div><input type="number" id="adv_${i}" value="${st.adv||''}" placeholder="0" step="0.01" onchange="attAdvChange(${i},'${name.replace(/'/g,"\\'")}',this.value)"></div>
-        <div class="field" style="flex:2"><div class="lbl">Note</div><input type="text" id="advnote_${i}" value="${st.advNote||''}" placeholder="salary advance…" onchange="attNoteChange(${i},'${name.replace(/'/g,"\\'")}',this.value)"></div>
-      </div>
-    </div>`;
-  }).join('');
+  const allDates=Object.keys(attData).sort((a,b)=>b.localeCompare(a));
 
   document.getElementById('stepContent').innerHTML=`
-    <div class="card">
-      <div class="card-title" style="justify-content:space-between;flex-wrap:wrap;gap:10px">
-        <span>👷 Attendance</span>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="date" id="attDatePicker" value="${dateKey}" style="padding:6px 10px;font-size:12px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);outline:none;cursor:pointer" onchange="changeAttDate(this.value)">
-          <span style="font-size:11px;color:var(--ink-light)">${dateKey===todayKey0()?'Today':'Past record'}</span>
+  <div class="card">
+    <div class="card-title">📅 Attendance — ${dateKey}</div>
+    <div class="grid2" style="margin-bottom:14px">
+      <div class="field"><div class="lbl">Date</div><input type="date" id="attDate" value="${dateKey}" max="${todayKey0()}" onchange="attSelectedDate=this.value;renderAttContent()" style="padding:10px;font-size:14px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"></div>
+      <div class="field"><div class="lbl">Add New Staff</div>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="newStaffName" placeholder="Staff name" style="flex:1">
+          <button class="btn-secondary" onclick="addStaff()" style="white-space:nowrap;padding:8px 12px">+ Add</button>
         </div>
       </div>
-      <!-- Add employee -->
-      <div style="background:var(--ioc-navy-light);border:1px solid var(--ioc-border);border-radius:var(--r);padding:10px 14px;margin-bottom:14px">
-        <div style="font-size:11px;font-weight:700;color:var(--ioc-navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Add New Employee</div>
-        <div style="display:flex;gap:8px;align-items:flex-end">
-          <div class="field" style="flex:1"><div class="lbl">Employee Name</div><input type="text" id="newStaffName" placeholder="Full name in CAPS"></div>
-          <button class="btn-primary" onclick="addNewStaff()" style="padding:8px 14px;font-size:12px;white-space:nowrap">+ Add</button>
-        </div>
-      </div>
-      <!-- Bulk actions -->
-      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-        <button class="btn-secondary" style="font-size:11px;padding:5px 12px" onclick="markAll('present')">✓ All Present</button>
-        <button class="btn-secondary" style="font-size:11px;padding:5px 12px" onclick="markAll('absent')">✗ All Absent</button>
-        <span style="font-size:11px;color:var(--ink-light);padding:5px 0;align-self:center">${staffList.length} staff</span>
-      </div>
-      ${rows}
     </div>
-    <div class="btn-row"><button class="btn-primary" onclick="saveAttendance()">💾 Save Attendance</button></div>
-    <div id="attMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>`;
+
+    <div style="overflow-x:auto"><table class="rtable">
+      <thead><tr><th>Staff</th><th>Status</th><th>Advance (₹)</th><th>Note</th><th></th></tr></thead>
+      <tbody>
+      ${staffList.map((name,i)=>{
+        const s=saved[name]||{};
+        return `<tr>
+          <td style="font-weight:600">${name}</td>
+          <td>
+            <select id="att_st_${i}" style="padding:5px 8px;border:1px solid var(--ioc-border);border-radius:6px;font-size:12px;background:#fff;color:var(--ink);outline:none">
+              <option value="" ${!s.status?'selected':''}>—</option>
+              <option value="present" ${s.status==='present'?'selected':''}>✅ Present</option>
+              <option value="absent" ${s.status==='absent'?'selected':''}>❌ Absent</option>
+              <option value="double" ${s.status==='double'?'selected':''}>⏰ Double Shift</option>
+              <option value="half" ${s.status==='half'?'selected':''}>⏳ Half Day</option>
+            </select>
+          </td>
+          <td><input type="number" id="att_adv_${i}" value="${s.adv||''}" step="0.01" placeholder="0" style="width:90px;padding:5px 8px;border:1px solid var(--ioc-border);border-radius:6px;font-size:12px;background:#fff;color:var(--ink);outline:none"></td>
+          <td><input type="text" id="att_note_${i}" value="${s.note||''}" placeholder="Optional" style="padding:5px 8px;border:1px solid var(--ioc-border);border-radius:6px;font-size:12px;background:#fff;color:var(--ink);outline:none;min-width:120px"></td>
+          <td><button class="rm-btn" onclick="removeStaff('${name.replace(/'/g,"\\'")}')">✕</button></td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table></div>
+
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn-primary" onclick="saveAttendance()">💾 Save ${dateKey}</button>
+    </div>
+    <div id="attMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>
+  </div>
+
+  <!-- SAVED ATTENDANCE RECORDS LIST -->
+  <div class="card">
+    <div class="card-title">📋 Saved Attendance Records (${allDates.length})</div>
+    ${allDates.length?`
+      <div style="display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto">
+        ${allDates.map(d=>{
+          const recs=attData[d]||{};
+          const counts={present:0,absent:0,double:0,half:0,none:0};
+          const totalAdv=Object.values(recs).reduce((a,v)=>a+(v.adv||0),0);
+          Object.values(recs).forEach(v=>{counts[v.status||'none']++;});
+          const total=staffList.length;
+          return `<div onclick="viewAttDetail('${d}')" style="cursor:pointer;padding:10px 14px;background:${d===attSelectedDate?'var(--ioc-navy-light)':'#fff'};border:1px solid var(--ioc-border);border-radius:var(--r);display:flex;justify-content:space-between;align-items:center;gap:10px;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateX(2px)';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:700;color:var(--ioc-navy)">${new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</div>
+              <div style="font-size:11px;color:var(--ink-light);margin-top:2px">
+                ✅ ${counts.present} present · ❌ ${counts.absent} absent · ⏰ ${counts.double} double · ⏳ ${counts.half} half
+              </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:11px;color:var(--ink-light)">Advance</div>
+              <div style="font-size:14px;font-weight:700;color:var(--ioc-red)">₹${fmt(totalAdv)}</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    `:'<div style="color:var(--ink-light);font-size:12px;padding:8px;text-align:center">No saved attendance records yet</div>'}
+  </div>
+
+  <!-- DETAIL VIEW -->
+  <div id="attDetailView"></div>`;
+}
+
+function viewAttDetail(date){
+  const recs=attData[date]||{};
+  const detailEl=document.getElementById('attDetailView');
+  if(!detailEl)return;
+  const totalAdv=Object.values(recs).reduce((a,v)=>a+(v.adv||0),0);
+  const rows=staffList.map(name=>{
+    const s=recs[name]||{};
+    const statusBadge=s.status?{
+      present:'<span style="padding:3px 8px;background:#e6f7e9;color:var(--green);border-radius:4px;font-size:11px;font-weight:600">✅ Present</span>',
+      absent:'<span style="padding:3px 8px;background:#ffe6e6;color:var(--ioc-red);border-radius:4px;font-size:11px;font-weight:600">❌ Absent</span>',
+      double:'<span style="padding:3px 8px;background:#fff8e1;color:var(--amber);border-radius:4px;font-size:11px;font-weight:600">⏰ Double</span>',
+      half:'<span style="padding:3px 8px;background:#e3f2fd;color:var(--ioc-navy);border-radius:4px;font-size:11px;font-weight:600">⏳ Half</span>'
+    }[s.status]:'<span style="color:var(--ink-light);font-size:11px">—</span>';
+    return `<tr><td style="font-weight:600">${name}</td><td>${statusBadge}</td><td class="right">${s.adv?'₹'+fmt(s.adv):'—'}</td><td style="color:var(--ink-light);font-size:11px">${s.note||'—'}</td></tr>`;
+  }).join('');
+  detailEl.innerHTML=`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="card-title" style="margin:0">📋 ${new Date(date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}</div>
+        <button class="btn-secondary" onclick="document.getElementById('attDetailView').innerHTML=''" style="font-size:11px;padding:5px 10px">✕ Close</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px">
+        ${(()=>{
+          const counts={present:0,absent:0,double:0,half:0};
+          Object.values(recs).forEach(v=>{if(v.status)counts[v.status]++;});
+          return `
+          <div style="padding:10px;background:#e6f7e9;border-radius:var(--r);text-align:center"><div style="font-size:10px;color:var(--ink-light);font-weight:700">Present</div><div style="font-size:18px;font-weight:700;color:var(--green)">${counts.present}</div></div>
+          <div style="padding:10px;background:#ffe6e6;border-radius:var(--r);text-align:center"><div style="font-size:10px;color:var(--ink-light);font-weight:700">Absent</div><div style="font-size:18px;font-weight:700;color:var(--ioc-red)">${counts.absent}</div></div>
+          <div style="padding:10px;background:#fff8e1;border-radius:var(--r);text-align:center"><div style="font-size:10px;color:var(--ink-light);font-weight:700">Double</div><div style="font-size:18px;font-weight:700;color:var(--amber)">${counts.double}</div></div>
+          <div style="padding:10px;background:#e3f2fd;border-radius:var(--r);text-align:center"><div style="font-size:10px;color:var(--ink-light);font-weight:700">Half Day</div><div style="font-size:18px;font-weight:700;color:var(--ioc-navy)">${counts.half}</div></div>
+          <div style="padding:10px;background:var(--ioc-navy-light);border-radius:var(--r);text-align:center"><div style="font-size:10px;color:var(--ink-light);font-weight:700">Total Advance</div><div style="font-size:18px;font-weight:700;color:var(--ioc-red)">₹${fmt(totalAdv)}</div></div>`;
+        })()}
+      </div>
+      <div style="overflow-x:auto"><table class="rtable">
+        <thead><tr><th>Staff</th><th>Status</th><th>Advance</th><th>Note</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn-secondary" onclick="attSelectedDate='${date}';renderAttContent();window.scrollTo({top:0,behavior:'smooth'})">✏️ Edit This Date</button>
+        <button class="btn-secondary" onclick="window.print()">🖨️ Print</button>
+      </div>
+    </div>`;
+  setTimeout(()=>document.getElementById('attDetailView').scrollIntoView({behavior:'smooth',block:'start'}),100);
 }
 
 function changeAttDate(val){attSelectedDate=val;renderAttContent();}
 
+async function addStaff(){addNewStaff();}
 async function addNewStaff(){
   const name=document.getElementById('newStaffName').value.trim().toUpperCase();
   if(!name){alert('Enter employee name');return;}
@@ -1086,34 +1161,31 @@ async function removeStaff(name,i){
   renderAttContent();
 }
 
-function attChange(i,name,val){
-  const dk=attSelectedDate;if(!attData[dk])attData[dk]={};if(!attData[dk][name])attData[dk][name]={status:'present',adv:0,advNote:''};
-  attData[dk][name].status=val;
-  ['present','absent','double','half-day'].forEach(s=>{
-    const lbl=document.getElementById(`lbl_${i}_${s}`);if(!lbl)return;
-    lbl.style.borderColor=s===val?'var(--ioc-red)':'var(--ioc-border)';lbl.style.background=s===val?'var(--ioc-red-light)':'#fff';lbl.style.color=s===val?'var(--ioc-red)':'var(--ink-light)';
-  });
-}
-function attAdvChange(i,name,val){const dk=attSelectedDate;if(!attData[dk])attData[dk]={};if(!attData[dk][name])attData[dk][name]={status:'present',adv:0,advNote:''};attData[dk][name].adv=parseFloat(val)||0;}
-function attNoteChange(i,name,val){const dk=attSelectedDate;if(!attData[dk])attData[dk]={};if(!attData[dk][name])attData[dk][name]={status:'present',adv:0,advNote:''};attData[dk][name].advNote=val;}
-function markAll(status){
-  const dk=attSelectedDate;if(!attData[dk])attData[dk]={};
-  staffList.forEach((name,i)=>{
-    if(!attData[dk][name])attData[dk][name]={status:'present',adv:0,advNote:''};
-    attData[dk][name].status=status;
-    ['present','absent','double','half-day'].forEach(s=>{
-      const lbl=document.getElementById(`lbl_${i}_${s}`);if(!lbl)return;
-      lbl.style.borderColor=s===status?'var(--ioc-red)':'var(--ioc-border)';lbl.style.background=s===status?'var(--ioc-red-light)':'#fff';lbl.style.color=s===status?'var(--ioc-red)':'var(--ink-light)';
-    });
-    const r=document.querySelector(`input[name="att_${i}"][value="${status}"]`);if(r)r.checked=true;
-  });
-}
 async function saveAttendance(){
-  const dk=attSelectedDate;await cloudSet(STORE_KEY_ATT,attData);
-  const counts={present:0,absent:0,double:0,'half-day':0};
-  staffList.forEach(n=>{const s=attData[dk]?.[n]?.status||'present';counts[s]=(counts[s]||0)+1;});
-  const totalAdv=staffList.reduce((a,n)=>a+(attData[dk]?.[n]?.adv||0),0);
-  document.getElementById('attMsg').textContent=`✅ Saved for ${dk}! P:${counts.present} A:${counts.absent} D:${counts.double} H:${counts['half-day']} | Advances: ₹${fmt(totalAdv)}`;
+  const dk=attSelectedDate;
+  if(!attData[dk])attData[dk]={};
+  // Read from new UI inputs
+  staffList.forEach((name,i)=>{
+    const stEl=document.getElementById('att_st_'+i);
+    const advEl=document.getElementById('att_adv_'+i);
+    const noteEl=document.getElementById('att_note_'+i);
+    if(stEl||advEl||noteEl){
+      attData[dk][name]={
+        status:stEl?stEl.value:(attData[dk][name]?.status||''),
+        adv:advEl?parseFloat(advEl.value)||0:(attData[dk][name]?.adv||0),
+        note:noteEl?noteEl.value:(attData[dk][name]?.note||'')
+      };
+    }
+  });
+  await cloudSet(STORE_KEY_ATT,attData);
+  const counts={present:0,absent:0,double:0,half:0};
+  Object.values(attData[dk]||{}).forEach(v=>{if(v.status)counts[v.status]=(counts[v.status]||0)+1;});
+  const totalAdv=Object.values(attData[dk]||{}).reduce((a,v)=>a+(v.adv||0),0);
+  const msgEl=document.getElementById('attMsg');
+  if(msgEl){
+    msgEl.textContent=`✅ Saved ${dk}! Present:${counts.present} Absent:${counts.absent} Double:${counts.double} Half:${counts.half} · Advance: ₹${fmt(totalAdv)}`;
+    setTimeout(()=>renderAttContent(),1500); // refresh to show in list
+  }
 }
 
 // ── MODULE 3: INSPECTION ──────────────────────────────────────────────────────
@@ -2309,9 +2381,64 @@ function renderOwnerCreditInto(target){
 function showOwnerCreditDetailIn(name){
   const txns=creditData.filter(t=>t.party===name).sort((a,b)=>a.date.localeCompare(b.date));
   let run=0;
-  const rows=txns.map(t=>{if(t.type==='credit')run+=t.amt;else run-=t.amt;return`<tr><td>${t.date}</td><td style="color:${t.type==='credit'?'var(--ioc-red)':'var(--green)'}">${t.type==='credit'?'+':'-'}₹${fmt(t.amt)}</td><td style="font-weight:600">₹${fmt(run)}</td><td>${t.note||'—'}</td></tr>`;}).join('');
+  const total=txns.filter(t=>t.type==='credit').reduce((a,t)=>a+t.amt,0);
+  const paid=txns.filter(t=>t.type==='payment').reduce((a,t)=>a+t.amt,0);
+  const balance=total-paid;
+  const rows=txns.map(t=>{
+    if(t.type==='credit')run+=t.amt;else run-=t.amt;
+    const src=t.source==='daily_sales'?'<span style="font-size:9px;padding:2px 5px;background:var(--ioc-navy-light);color:var(--ioc-navy);border-radius:3px;font-weight:600">AUTO</span>':'<span style="font-size:9px;padding:2px 5px;background:#f0fff4;color:var(--green);border-radius:3px;font-weight:600">MANUAL</span>';
+    return `<tr>
+      <td>${t.date}</td>
+      <td><b style="color:${t.type==='credit'?'var(--ioc-red)':'var(--green)'}">${t.type==='credit'?'Credit':'Payment'}</b></td>
+      <td class="right" style="color:${t.type==='credit'?'var(--ioc-red)':'var(--green)'};font-weight:700">${t.type==='credit'?'+ ':'− '}₹${fmt(t.amt)}</td>
+      <td class="right" style="font-weight:700;color:${run>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(run)}</td>
+      <td>${src}</td>
+      <td style="color:var(--ink-light);font-size:11px">${t.note||'—'}</td>
+    </tr>`;
+  }).join('');
   const d=document.getElementById('creditSubDetail');if(!d)return;
-  d.innerHTML=`<div class="card"><div class="card-title">${name}</div><div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Date</th><th>Amount</th><th>Balance</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table></div><div class="btn-row"><button class="btn-secondary" onclick="window.print()">🖨️ Print</button></div></div>`;
+  d.innerHTML=`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="card-title" style="margin:0">💳 ${name} — Balance Sheet</div>
+        <button class="btn-secondary" onclick="document.getElementById('creditSubDetail').innerHTML=''" style="font-size:11px;padding:5px 10px">✕ Close</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px">
+        <div style="padding:14px;background:var(--ioc-red-light);border-radius:var(--rl);text-align:center;border:1px solid var(--ioc-red)">
+          <div style="font-size:10px;color:var(--ink-light);font-weight:700;text-transform:uppercase">Total Credit Given</div>
+          <div style="font-size:20px;font-weight:700;color:var(--ioc-red);margin-top:4px">₹${fmt(total)}</div>
+          <div style="font-size:10px;color:var(--ink-light);margin-top:2px">${txns.filter(t=>t.type==='credit').length} transactions</div>
+        </div>
+        <div style="padding:14px;background:#f0fff4;border-radius:var(--rl);text-align:center;border:1px solid var(--green)">
+          <div style="font-size:10px;color:var(--ink-light);font-weight:700;text-transform:uppercase">Total Paid Back</div>
+          <div style="font-size:20px;font-weight:700;color:var(--green);margin-top:4px">₹${fmt(paid)}</div>
+          <div style="font-size:10px;color:var(--ink-light);margin-top:2px">${txns.filter(t=>t.type==='payment').length} payments</div>
+        </div>
+        <div style="padding:14px;background:${balance>0?'var(--ioc-red-light)':'#f0fff4'};border-radius:var(--rl);text-align:center;border:1px solid ${balance>0?'var(--ioc-red)':'var(--green)'}">
+          <div style="font-size:10px;color:var(--ink-light);font-weight:700;text-transform:uppercase">Outstanding Balance</div>
+          <div style="font-size:20px;font-weight:700;color:${balance>0?'var(--ioc-red)':'var(--green)'};margin-top:4px">${balance>0?'₹'+fmt(balance):'PAID UP'}</div>
+          <div style="font-size:10px;color:var(--ink-light);margin-top:2px">${balance>0?'⚠️ Pending':'✅ All clear'}</div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:12px;color:var(--ink-light)">
+          <span style="padding:2px 5px;background:var(--ioc-navy-light);color:var(--ioc-navy);border-radius:3px;font-weight:600;font-size:9px">AUTO</span> = from Daily Sales · 
+          <span style="padding:2px 5px;background:#f0fff4;color:var(--green);border-radius:3px;font-weight:600;font-size:9px">MANUAL</span> = manually recorded
+        </div>
+        <span style="font-size:11px;color:var(--ink-light)">${txns.length} total transactions</span>
+      </div>
+
+      <div style="overflow-x:auto"><table class="rtable">
+        <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Running Balance</th><th>Source</th><th>Note</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:var(--ink-light);padding:12px">No transactions</td></tr>'}</tbody>
+      </table></div>
+
+      <div class="btn-row" style="margin-top:14px">
+        <button class="btn-secondary" onclick="window.print()">🖨️ Print Balance Sheet</button>
+      </div>
+    </div>`;
+  setTimeout(()=>document.getElementById('creditSubDetail').scrollIntoView({behavior:'smooth',block:'start'}),100);
 }
 
 function renderOwnerStaffInto(target,fromDate='',toDate=''){
@@ -2926,68 +3053,6 @@ function showHistDetailByDate(ds){
   if(d)showHistDetail(cloudData.records.indexOf(d));
 }
 
-function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCalendar();}
-function calNext(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderCalendar();}
-function shortFmt(n){n=Number(n||0);if(n>=100000)return(n/100000).toFixed(1)+'L';if(n>=1000)return(n/1000).toFixed(1)+'K';return n.toFixed(0);}
-
-function renderCalendar(){
-  const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const lbl=document.getElementById('calMonthLabel');
-  if(lbl)lbl.textContent=`${MONTHS[calMonth]} ${calYear}`;
-
-  const monthStr=`${calYear}-${String(calMonth+1).padStart(2,'0')}`;
-  const recMap={};
-  cloudData.records.forEach(r=>{if(r.date.startsWith(monthStr))recMap[r.date]=r;});
-  const mR=Object.values(recMap);
-
-  const sumEl=document.getElementById('calMonthSummary');
-  if(sumEl)sumEl.innerHTML=mR.length?`
-    <div class="cum-card"><div class="cum-label">Days</div><div class="cum-val" style="font-size:18px">${mR.length}</div></div>
-    <div class="cum-card"><div class="cum-label">Fuel Revenue</div><div class="cum-val" style="font-size:15px">₹${fmt(mR.reduce((a,r)=>a+(r.fuelTotal||0),0))}</div></div>
-    <div class="cum-card"><div class="cum-label">Total Cash</div><div class="cum-val" style="font-size:15px">₹${fmt(mR.reduce((a,r)=>a+(r.finalCash||0),0))}</div></div>
-    ${currentRole==='owner'?`<div class="cum-card"><div class="cum-label">Profit</div><div class="cum-val" style="font-size:15px;color:var(--green)">₹${fmt(mR.reduce((a,r)=>a+(r.netProfit||0),0))}</div></div>`:''}
-  `:'<div style="font-size:12px;color:var(--ink-light);padding:4px">No records this month — use ‹ to navigate</div>';
-
-  const today=new Date().toISOString().slice(0,10);
-  const firstDay=new Date(calYear,calMonth,1).getDay();
-  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
-  let cells='';
-  for(let i=0;i<firstDay;i++)cells+=`<div style="min-height:62px"></div>`;
-  for(let d=1;d<=daysInMonth;d++){
-    const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const rec=recMap[ds],isToday=ds===today,profit=rec?(rec.netProfit||0):0;
-    const bg=rec?(profit>=0?'rgba(29,107,58,0.1)':'rgba(208,30,30,0.08)'):(isToday?'var(--ioc-red-light)':'transparent');
-    const border=isToday?'var(--ioc-red)':rec?(profit>=0?'rgba(29,107,58,0.5)':'rgba(208,30,30,0.4)'):'var(--ioc-border)';
-    cells+=`<div onclick="${rec?`showHistDetailByDate('${ds}')`:''}" style="min-height:62px;border-radius:6px;border:1.5px solid ${border};padding:5px;cursor:${rec?'pointer':'default'};background:${bg};position:relative">
-      <div style="font-size:11px;font-weight:700;color:${isToday?'var(--ioc-red)':rec?'var(--ioc-navy)':'var(--ink-light)'}">${d}</div>
-      ${rec?`<div style="font-size:9px;font-weight:700;color:${profit>=0?'var(--green)':'var(--ioc-red)'}">₹${shortFmt(rec.finalCash)}</div><div style="font-size:8px;color:var(--ink-light)">${(rec.hsdNet||0).toFixed(0)}+${(rec.msNet||0).toFixed(0)}L</div><div style="position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:${profit>=0?'var(--green)':'var(--ioc-red)'}"></div>`:''}
-    </div>`;
-  }
-  const grid=document.getElementById('calGrid');if(grid)grid.innerHTML=cells;
-  const hd=document.getElementById('historyDetail');if(hd)hd.style.display='none';
-
-  const listEl=document.getElementById('calRecordList');
-  if(listEl){
-    const sorted=[...mR].sort((a,b)=>b.date.localeCompare(a.date));
-    listEl.innerHTML=sorted.length?sorted.map(r=>`
-      <div onclick="showHistDetailByDate('${r.date}')" class="hist-item" style="cursor:pointer">
-        <div style="flex:1">
-          <div class="hist-date">${new Date(r.date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</div>
-          <div class="hist-sub">HSD ${(r.hsdNet||0).toFixed(1)}L · MS ${(r.msNet||0).toFixed(1)}L · Paytm ₹${fmt(r.paytmTotal||0)} · BF ₹${fmt(r.finalCash)}</div>
-        </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:16px;font-weight:700;color:var(--ioc-navy)">₹${fmt(r.finalCash)}</div>
-          ${currentRole==='owner'?`<div style="font-size:11px;color:${(r.netProfit||0)>=0?'var(--green)':'var(--ioc-red)'}">Profit ₹${fmt(r.netProfit||0)}</div>`:''}
-        </div>
-      </div>`).join('')
-    :'<div style="text-align:center;padding:20px;color:var(--ink-light)">No records this month</div>';
-  }
-}
-
-function showHistDetailByDate(ds){
-  const d=cloudData.records.find(r=>r.date===ds);
-  if(d)showHistDetail(cloudData.records.indexOf(d));
-}
 function showHistDetail(i){
   const d=cloudData.records[i];if(!d)return;
   const det=document.getElementById('historyDetail');det.style.display='';
