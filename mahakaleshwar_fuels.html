@@ -219,9 +219,10 @@ input:focus{border-color:var(--ioc-red);box-shadow:0 0 0 2px rgba(208,30,30,.1);
 </div>
 
 <!-- SYNC BAR -->
-<div class="sync-bar">
+<div class="sync-bar" onclick="if(!firebaseDB){loadCloud().then(()=>{const hv=document.getElementById('historyView');if(hv&&hv.style.display!==\'none\')renderHistory();})}" style="cursor:pointer" title="Click to retry connection">
   <div class="sync-dot loading" id="syncDot"></div>
   <span id="syncMsg">Connecting to cloud…</span>
+  <span style="margin-left:auto;font-size:10px;opacity:0.5">tap to retry</span>
 </div>
 
 <!-- LOGIN SCREEN -->
@@ -905,13 +906,75 @@ async function confirmSave(){
   if(!latestDate||d.date>=latestDate){cloudData.prevClosing=nc;cloudData.prevBF=d.finalCash;}
   cloudData.records=cloudData.records.filter(r=>r.date!==d.date);
   cloudData.records.unshift({...d,savedAt:new Date().toISOString()});
+
+  // ── AUTO-SYNC CREDIT SALES → Credit Ledger ──────────────────────────────
+  // Remove any existing credit entries for this date (to avoid duplicates on re-save)
+  creditData=creditData.filter(t=>!(t.date===d.date&&t.source==='daily_sales'));
+  // Add fresh entries from today's credit sales
+  (d.creditSaleItems||[]).forEach(x=>{
+    if(x.name&&x.amt>0){
+      creditData.push({
+        party:x.name,
+        type:'credit',
+        amt:x.amt,
+        date:d.date,
+        note:`From Daily Sales ${d.date}`,
+        source:'daily_sales',
+        savedAt:new Date().toISOString()
+      });
+    }
+  });
+  await cloudSet(STORE_KEY_CREDIT,creditData);
+
+  // ── AUTO-SYNC DEPOSITS → Owner Deposits ─────────────────────────────────
+  // Remove any existing deposit entries for this date from daily sales
+  ownerDeposits=ownerDeposits.filter(dep=>!(dep.date===d.date&&dep.source==='daily_sales'));
+  // HO/Bank deposit
+  if(d.hoBank>0){
+    ownerDeposits.push({
+      date:d.date,type:'Bank',account:'HO/Bank',
+      amt:d.hoBank,note:`HO/Bank from Daily Sales ${d.date}`,
+      source:'daily_sales',savedAt:new Date().toISOString()
+    });
+  }
+  // Account Transfer
+  if(d.acctTr>0){
+    ownerDeposits.push({
+      date:d.date,type:'Transfer',account:'Account Transfer',
+      amt:d.acctTr,note:`Acct Transfer from Daily Sales ${d.date}`,
+      source:'daily_sales',savedAt:new Date().toISOString()
+    });
+  }
+  // Paytm
+  if(d.paytmTotal>0){
+    ownerDeposits.push({
+      date:d.date,type:'Paytm',account:'Paytm',
+      amt:d.paytmTotal,note:`Paytm from Daily Sales ${d.date}`,
+      source:'daily_sales',savedAt:new Date().toISOString()
+    });
+  }
+  // Manual deposits entered in extras step
+  (d.depositItems||[]).forEach(x=>{
+    if(x.name&&x.amt>0){
+      ownerDeposits.push({
+        date:d.date,type:'Deposit',account:x.name,
+        amt:x.amt,note:`Deposit from Daily Sales ${d.date}`,
+        source:'daily_sales',savedAt:new Date().toISOString()
+      });
+    }
+  });
+  await cloudSet(DEPOSIT_KEY,ownerDeposits);
+
   await saveCloud();
   btn.disabled=false;btn.innerHTML='☁️ Save & Sync';
-  // Show success with Edit option
   document.getElementById('saveMsg').innerHTML=`
     <div style="padding:12px 16px;background:#f0fff4;border:1px solid var(--green);border-radius:var(--r);margin-top:8px">
       <div style="font-size:13px;font-weight:700;color:var(--green)">✅ Saved & Synced!</div>
       <div style="font-size:11px;color:var(--ink-light);margin-top:2px">${d.date} · Final Cash: ₹${fmt(d.finalCash)} · Next BF: ₹${fmt(d.finalCash)}</div>
+      <div style="font-size:11px;color:var(--ink-light);margin-top:2px">
+        ${(d.creditSaleItems||[]).length?`💳 ${(d.creditSaleItems||[]).length} credit entries auto-added to Credit Ledger · `:''}
+        ${(d.hoBank||d.paytmTotal||d.acctTr)?`🏦 Deposits auto-added to Owner Deposits`:''}
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
         <button onclick="editSavedRecord('${d.date}')" style="padding:8px 16px;background:var(--ioc-navy);color:#fff;border:none;border-radius:var(--r);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ui)">✏️ Edit This Record</button>
         <button onclick="backToModules();draft={};mobilItems=[];depositItems=[];advItems=[];creditSaleItems=[];pumpExpItems=[];" style="padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:var(--r);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ui)">✅ Done</button>
@@ -2688,8 +2751,57 @@ function renderOwnerCredit(fromDate='',toDate=''){
 function showOwnerCreditDetail(name){
   const txns=creditData.filter(t=>t.party===name).sort((a,b)=>a.date.localeCompare(b.date));
   let run=0;
-  const rows=txns.map(t=>{if(t.type==='credit')run+=t.amt;else run-=t.amt;return`<tr><td>${t.date}</td><td style="color:${t.type==='credit'?'var(--ioc-red)':'var(--green)'}">${t.type==='credit'?'+':'-'}₹${fmt(t.amt)}</td><td style="font-weight:600">₹${fmt(run)}</td><td>${t.note||'—'}</td></tr>`;}).join('');
-  document.getElementById('ownerCreditDetail').innerHTML=`<div class="card"><div class="card-title">${name} — Ledger</div><div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Date</th><th>Amount</th><th>Balance</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table></div><div class="btn-row"><button class="btn-secondary" onclick="window.print()">🖨️ Print</button></div></div>`;
+  const rows=txns.map(t=>{
+    if(t.type==='credit')run+=t.amt;else run-=t.amt;
+    const sourceTag=t.source==='daily_sales'?`<span style="font-size:9px;padding:2px 5px;background:var(--ioc-navy-light);color:var(--ioc-navy);border-radius:3px;font-weight:600">AUTO</span>`:
+      `<span style="font-size:9px;padding:2px 5px;background:#f0fff4;color:var(--green);border-radius:3px;font-weight:600">MANUAL</span>`;
+    return`<tr>
+      <td>${t.date}</td>
+      <td style="color:${t.type==='credit'?'var(--ioc-red)':'var(--green)'}"><b>${t.type==='credit'?'Credit':'Payment'}</b></td>
+      <td style="color:${t.type==='credit'?'var(--ioc-red)':'var(--green)'};font-weight:700">${t.type==='credit'?'+ ':'− '}₹${fmt(t.amt)}</td>
+      <td style="font-weight:700;color:${run>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(run)}</td>
+      <td>${sourceTag}</td>
+      <td style="color:var(--ink-light);font-size:11px">${t.note||'—'}</td>
+    </tr>`;
+  }).join('');
+  const total=txns.filter(t=>t.type==='credit').reduce((a,t)=>a+t.amt,0);
+  const paid=txns.filter(t=>t.type==='payment').reduce((a,t)=>a+t.amt,0);
+  const balance=total-paid;
+  document.getElementById('ownerCreditDetail').innerHTML=`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="card-title" style="margin:0">💳 ${name} — Full Ledger</div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--ink-light)">Balance Due</div>
+          <div style="font-size:20px;font-weight:700;color:${balance>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(balance)}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+        <div style="padding:10px;background:var(--ioc-red-light);border-radius:var(--r);text-align:center">
+          <div style="font-size:10px;color:var(--ink-light);font-weight:700">Total Credit</div>
+          <div style="font-size:16px;font-weight:700;color:var(--ioc-red)">₹${fmt(total)}</div>
+        </div>
+        <div style="padding:10px;background:#f0fff4;border-radius:var(--r);text-align:center">
+          <div style="font-size:10px;color:var(--ink-light);font-weight:700">Total Paid</div>
+          <div style="font-size:16px;font-weight:700;color:var(--green)">₹${fmt(paid)}</div>
+        </div>
+        <div style="padding:10px;background:${balance>0?'var(--ioc-red-light)':'#f0fff4'};border-radius:var(--r);text-align:center">
+          <div style="font-size:10px;color:var(--ink-light);font-weight:700">Balance Due</div>
+          <div style="font-size:16px;font-weight:700;color:${balance>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(balance)}</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--ink-light);margin-bottom:10px">
+        <span style="padding:2px 5px;background:var(--ioc-navy-light);color:var(--ioc-navy);border-radius:3px;font-weight:600;font-size:9px">AUTO</span> = from Daily Sales &nbsp;|&nbsp;
+        <span style="padding:2px 5px;background:#f0fff4;color:var(--green);border-radius:3px;font-weight:600;font-size:9px">MANUAL</span> = manually entered
+      </div>
+      <div style="overflow-x:auto"><table class="rtable">
+        <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance</th><th>Source</th><th>Note</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:var(--ink-light);padding:12px">No transactions</td></tr>'}</tbody>
+      </table></div>
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="window.print()">🖨️ Print</button>
+      </div>
+    </div>`;
 }
 
 // ── OWNER STAFF TAB ───────────────────────────────────────────────────────────
@@ -3746,10 +3858,17 @@ async function refreshAndReload(){
 
 async function init(){
   await loadCloud();
-  // background replaced with static image
-  // Wait for Firebase to fully connect then preload
   await preloadHistoricalData();
-  console.log('Records in cloud:',cloudData.records.length);
+  console.log('Records loaded:',cloudData.records.length);
+  // Auto-retry if Firebase failed to connect
+  if(!firebaseDB){
+    console.log('Firebase not connected, retrying in 3s...');
+    setTimeout(async()=>{
+      await loadCloud();
+      const hv=document.getElementById('historyView');
+      if(hv&&hv.style.display!=='none')renderHistory();
+    },3000);
+  }
 }
 
 async function preloadHistoricalData(){
