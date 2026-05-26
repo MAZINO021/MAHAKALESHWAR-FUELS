@@ -3168,7 +3168,38 @@ function showHistDetail(i){
   <div class="btn-row" style="margin-top:12px">
     <button class="btn-secondary" onclick="document.getElementById('historyDetail').style.display='none';window.scrollTo({top:0,behavior:'smooth'})">← Back</button>
     <button class="btn-secondary" onclick="window.print()">🖨️ Print</button>
+    ${currentRole==='manager'?`<button class="btn-primary" onclick="editHistRecord('${d.date}')" style="background:var(--ioc-navy);border-color:var(--ioc-navy)">✏️ Edit</button>`:''}
   </div>`;
+}
+
+function editHistRecord(ds){
+  const rec=cloudData.records.find(r=>r.date===ds);
+  if(!rec)return;
+  if(!confirm('Edit record for '+ds+'? The form will be pre-filled with existing data.'))return;
+
+  // Load all record data into draft and item arrays
+  draft={...rec};
+  salesDate=rec.date;
+  mobilItems=[...(rec.mobilItems||[])];
+  depositItems=[...(rec.depositItems||[])];
+  advItems=[...(rec.advItems||[])];
+  creditSaleItems=[...(rec.creditSaleItems||[])];
+  pumpExpItems=[...(rec.pumpExpItems||[])];
+
+  // Restore original opening meters as _prevClosingOverride so renderClosing shows correct values
+  const prevClose={};
+  [...NOZZLES_HSD,...NOZZLES_MS].forEach(n=>{prevClose[n]=rec['open_'+n]||0;});
+  draft._prevClosingOverride=prevClose;
+
+  // Switch to manager view, open sales module at step 0 without resetting draft
+  setMode('manager');
+  currentModule='sales';
+  document.getElementById('moduleSelect').style.display='none';
+  document.getElementById('moduleContent').style.display='';
+  currentStep=0;
+  renderSaleStep();
+}
+
 }
 
 // ── QUERY ─────────────────────────────────────────────────────────────────────
