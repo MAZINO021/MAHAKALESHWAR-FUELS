@@ -3286,8 +3286,17 @@ function mgrLocalAnswer(q){
 
   if(q.includes('final cash')||q.includes('cash')||q.includes('balance')){
     if(q.includes('today')){const r=allRecs.find(r=>r.date===today);return r?`Today (${today}) Final Cash: ₹${fmt(r.finalCash)}`:`No record for today yet.`;}
-    const lines=allRecs.slice(0,7).map(r=>`${r.date}: ₹${fmt(r.finalCash)}`).join('\n');
-    return`Recent Final Cash:\n${lines}`;
+    // "all time" / "all" → show every record
+    if(q.includes('all time')||q.includes('all')||q.includes('poora')){
+      const sorted=[...allRecs].sort((a,b)=>b.date.localeCompare(a.date));
+      const lines=sorted.map(r=>`${r.date}: ₹${fmt(r.finalCash)}`).join('\n');
+      const total=sorted.reduce((a,r)=>a+(r.finalCash||0),0);
+      return`💰 Final Cash — All Records (${sorted.length} days):\nTotal: ₹${fmt(total)}\n\n${lines||'No records'}`;
+    }
+    // month
+    const lines=monthRecs.sort((a,b)=>b.date.localeCompare(a.date)).map(r=>`${r.date}: ₹${fmt(r.finalCash)}`).join('\n');
+    const total=monthRecs.reduce((a,r)=>a+(r.finalCash||0),0);
+    return`💰 Final Cash — This Month (${monthRecs.length} days):\nTotal collected: ₹${fmt(total)}\n\n${lines||'No records this month'}`;
   }
   if(q.includes('expense')||q.includes('kharch')){
     const allCats=[...new Set(allRecs.flatMap(r=>(r.pumpExpItems||[]).map(x=>x.name.toLowerCase())))];
@@ -3297,11 +3306,15 @@ function mgrLocalAnswer(q){
       const total=entries.reduce((a,x)=>a+x.amt,0);
       return`${entries[0]?.name||mentionedCat.toUpperCase()} — Total: ₹${fmt(total)}\n${entries.map(x=>`${x.date}: ₹${fmt(x.amt)}`).join('\n')}`;
     }
-    const total=monthRecs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
-    const breakdown=monthRecs.flatMap(r=>(r.pumpExpItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
-    return`This month expenses: ₹${fmt(total)}\n${breakdown.join('\n')||'None'}`;
+    // Show clean day-wise total, not every line item
+    const useAll=q.includes('all time')||q.includes('all')||q.includes('poora');
+    const recs=useAll?[...allRecs].sort((a,b)=>b.date.localeCompare(a.date)):monthRecs.sort((a,b)=>b.date.localeCompare(a.date));
+    const total=recs.reduce((a,r)=>a+(r.pumpExpTotal||0),0);
+    const label=useAll?`All-time (${recs.length} days)`:`This month (${recs.length} days)`;
+    const dayLines=recs.filter(r=>(r.pumpExpTotal||0)>0).map(r=>`${r.date}: ₹${fmt(r.pumpExpTotal)}`).join('\n');
+    return`🧾 Expenses — ${label}:\nTotal: ₹${fmt(total)}\n\nDay-wise:\n${dayLines||'No expenses recorded'}`;
   }
-  // ── ADVANCE — checked BEFORE summary/total so "total adv this month" hits here
+  // ── ADVANCE — checked BEFORE summary/total
   if(q.includes('advance')||q.includes('adv')){
     // "all advance" / "who got" / "staff advance" → all-time staff breakdown
     if(q.includes('all advance')||q.includes('staff advance')||q.includes('who got')||q.includes('sabka')){
@@ -3313,22 +3326,21 @@ function mgrLocalAnswer(q){
     // specific person
     const allNames=[...new Set(allRecs.flatMap(r=>(r.advItems||[]).map(x=>x.name.toLowerCase())))];
     const mentionedName=allNames.find(n=>q.includes(n.toLowerCase())||n.toLowerCase().split(' ').some(part=>part.length>2&&q.includes(part)));
+    // "all time" = explicit all-time keywords only (NOT the word "total")
+    const useAll=q.includes('all time')||q.includes('abtak')||q.includes('ever')||q.includes('poora');
     if(mentionedName){
-      // check if asking for this month or all-time
-      const useAll=q.includes('all time')||q.includes('total')||q.includes('abtak')||q.includes('ever');
       const recs=useAll?allRecs:monthRecs;
       const entries=recs.flatMap(r=>(r.advItems||[]).filter(x=>x.name.toLowerCase()===mentionedName).map(x=>({date:r.date,name:x.name,amt:x.amt})));
       const total=entries.reduce((a,x)=>a+x.amt,0);
       const label=useAll?'All-time':'This month';
       return`${entries[0]?.name||mentionedName.toUpperCase()} — ${label} Advance: ₹${fmt(total)}\n${entries.map(x=>`${x.date}: ₹${fmt(x.amt)}`).join('\n')||'No entries'}`;
     }
-    // month total
-    const useAll=q.includes('all time')||q.includes('abtak')||q.includes('ever');
-    const recs=useAll?allRecs:monthRecs;
+    // no name — show month total with day-wise
+    const recs=useAll?[...allRecs].sort((a,b)=>b.date.localeCompare(a.date)):monthRecs.sort((a,b)=>b.date.localeCompare(a.date));
     const total=recs.reduce((a,r)=>a+(r.advTotal||0),0);
-    const breakdown=recs.flatMap(r=>(r.advItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
-    const label=useAll?'All-time':'This month';
-    return`👷 ${label} Advances: ₹${fmt(total)}\n\nDay-wise:\n${breakdown.join('\n')||'No advances recorded'}`;
+    const label=useAll?`All-time (${recs.length} days)`:`This month (${recs.length} days)`;
+    const dayLines=recs.filter(r=>(r.advTotal||0)>0).map(r=>`${r.date}: ₹${fmt(r.advTotal)} — ${(r.advItems||[]).map(x=>`${x.name} ₹${fmt(x.amt)}`).join(', ')}`).join('\n');
+    return`👷 Advances — ${label}:\nTotal: ₹${fmt(total)}\n\n${dayLines||'No advances recorded'}`;
   }
   if(q.includes('fuel')||q.includes('hsd')||q.includes('ms')||q.includes('diesel')||q.includes('petrol')){
     const hsd=monthRecs.reduce((a,r)=>a+(r.hsdNet||0),0);
@@ -3500,13 +3512,20 @@ function bellaLocalAnswer(q){
       const r=allRecs.find(r=>r.date===today);
       return r?`Today (${today}) Final Cash: ₹${fmt(r.finalCash)}`:`No record for today yet.`;
     }
-    const lines=allRecs.slice(0,10).map(r=>`${r.date}: ₹${fmt(r.finalCash)}`).join('\n');
-    return`Recent Final Cash:\n${lines}`;
+    if(q.includes('all time')||q.includes('all')||q.includes('poora')){
+      const sorted=[...allRecs].sort((a,b)=>b.date.localeCompare(a.date));
+      const total=sorted.reduce((a,r)=>a+(r.finalCash||0),0);
+      const lines=sorted.map(r=>`${r.date}: ₹${fmt(r.finalCash)}`).join('\n');
+      return`💰 Final Cash — All Records (${sorted.length} days):\nTotal: ₹${fmt(total)}\n\n${lines||'No records'}`;
+    }
+    const sorted=monthRecs.sort((a,b)=>b.date.localeCompare(a.date));
+    const total=sorted.reduce((a,r)=>a+(r.finalCash||0),0);
+    const lines=sorted.map(r=>`${r.date}: ₹${fmt(r.finalCash)}`).join('\n');
+    return`💰 Final Cash — This Month (${sorted.length} days):\nTotal: ₹${fmt(total)}\n\n${lines||'No records this month'}`;
   }
 
   // Expense
   if(q.includes('expense')||q.includes('kharch')){
-    // Check if a specific category is mentioned
     const allCats=[...new Set(allRecs.flatMap(r=>(r.pumpExpItems||[]).map(x=>x.name.toLowerCase())))];
     const mentionedCat=allCats.find(c=>q.includes(c.toLowerCase())||c.toLowerCase().split(' ').some(part=>part.length>2&&q.includes(part)));
     if(mentionedCat){
@@ -3515,25 +3534,27 @@ function bellaLocalAnswer(q){
       const lines=entries.map(x=>`${x.date}: ₹${fmt(x.amt)}`).join('\n');
       return`${entries[0]?.name||mentionedCat.toUpperCase()} — Total: ₹${fmt(total)}\n\nEntries:\n${lines||'No entries found'}`;
     }
-    const total=monthRecs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
-    const breakdown=monthRecs.flatMap(r=>(r.pumpExpItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
-    return`This month total expenses: ₹${fmt(total)}\n\nBreakdown:\n${breakdown.join('\n')||'No expenses recorded'}`;
+    const useAll=q.includes('all time')||q.includes('all')||q.includes('poora');
+    const recs=useAll?[...allRecs].sort((a,b)=>b.date.localeCompare(a.date)):monthRecs.sort((a,b)=>b.date.localeCompare(a.date));
+    const total=recs.reduce((a,r)=>a+(r.pumpExpTotal||0),0);
+    const label=useAll?`All-time (${recs.length} days)`:`This month (${recs.length} days)`;
+    const dayLines=recs.filter(r=>(r.pumpExpTotal||0)>0).map(r=>`${r.date}: ₹${fmt(r.pumpExpTotal)}`).join('\n');
+    return`🧾 Expenses — ${label}:\nTotal: ₹${fmt(total)}\n\nDay-wise:\n${dayLines||'No expenses recorded'}`;
   }
 
   // Advance
   if(q.includes('advance')||q.includes('adv')){
-    // "all advance" / "who got" / "staff advance" → all-time staff breakdown
     if(q.includes('all advance')||q.includes('staff advance')||q.includes('who got')||q.includes('sabka')){
       const advMap={};allRecs.forEach(r=>(r.advItems||[]).forEach(x=>{advMap[x.name]=(advMap[x.name]||0)+x.amt;}));
       const sorted=Object.entries(advMap).sort(([,a],[,b])=>b-a);
       const total=sorted.reduce((a,[,v])=>a+v,0);
       return`👷 All Staff Advances (all time):\nTotal: ₹${fmt(total)}\n\n${sorted.map(([n,a])=>`${n}: ₹${fmt(a)}`).join('\n')||'None'}`;
     }
-    // Check if a specific name is mentioned
     const allNames=[...new Set(allRecs.flatMap(r=>(r.advItems||[]).map(x=>x.name.toLowerCase())))];
     const mentionedName=allNames.find(n=>q.includes(n.toLowerCase())||n.toLowerCase().split(' ').some(part=>part.length>2&&q.includes(part)));
+    // "all time" only via explicit keywords — NOT the word "total"
+    const useAll=q.includes('all time')||q.includes('abtak')||q.includes('ever')||q.includes('poora');
     if(mentionedName){
-      const useAll=q.includes('all time')||q.includes('total')||q.includes('abtak')||q.includes('ever');
       const recs=useAll?allRecs:monthRecs;
       const entries=recs.flatMap(r=>(r.advItems||[]).filter(x=>x.name.toLowerCase()===mentionedName).map(x=>({date:r.date,name:x.name,amt:x.amt})));
       const total=entries.reduce((a,x)=>a+x.amt,0);
@@ -3541,13 +3562,11 @@ function bellaLocalAnswer(q){
       const label=useAll?'All-time':'This month';
       return`${entries[0]?.name||mentionedName.toUpperCase()} — ${label} Advance: ₹${fmt(total)}\n\nEntries:\n${lines||'No advance found'}`;
     }
-    // No name mentioned — show this month total with day-wise breakdown
-    const useAll=q.includes('all time')||q.includes('abtak')||q.includes('ever');
-    const recs=useAll?allRecs:monthRecs;
+    const recs=useAll?[...allRecs].sort((a,b)=>b.date.localeCompare(a.date)):monthRecs.sort((a,b)=>b.date.localeCompare(a.date));
     const total=recs.reduce((a,r)=>a+(r.advTotal||0),0);
-    const breakdown=recs.flatMap(r=>(r.advItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
-    const label=useAll?'All-time':'This month';
-    return`👷 ${label} Advances: ₹${fmt(total)}\n\nBreakdown:\n${breakdown.join('\n')||'No advances recorded'}`;
+    const label=useAll?`All-time (${recs.length} days)`:`This month (${recs.length} days)`;
+    const dayLines=recs.filter(r=>(r.advTotal||0)>0).map(r=>`${r.date}: ₹${fmt(r.advTotal)} — ${(r.advItems||[]).map(x=>`${x.name} ₹${fmt(x.amt)}`).join(', ')}`).join('\n');
+    return`👷 Advances — ${label}:\nTotal: ₹${fmt(total)}\n\n${dayLines||'No advances recorded'}`;
   }
 
   // Fuel / HSD / MS / diesel / petrol
