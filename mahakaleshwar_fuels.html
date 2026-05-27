@@ -3301,17 +3301,34 @@ function mgrLocalAnswer(q){
     const breakdown=monthRecs.flatMap(r=>(r.pumpExpItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
     return`This month expenses: ₹${fmt(total)}\n${breakdown.join('\n')||'None'}`;
   }
+  // ── ADVANCE — checked BEFORE summary/total so "total adv this month" hits here
   if(q.includes('advance')||q.includes('adv')){
+    // "all advance" / "who got" / "staff advance" → all-time staff breakdown
+    if(q.includes('all advance')||q.includes('staff advance')||q.includes('who got')||q.includes('sabka')){
+      const advMap={};allRecs.forEach(r=>(r.advItems||[]).forEach(x=>{advMap[x.name]=(advMap[x.name]||0)+x.amt;}));
+      const sorted=Object.entries(advMap).sort(([,a],[,b])=>b-a);
+      const total=sorted.reduce((a,[,v])=>a+v,0);
+      return`👷 All Staff Advances (all time):\nTotal: ₹${fmt(total)}\n\n${sorted.map(([n,a])=>`${n}: ₹${fmt(a)}`).join('\n')||'None'}`;
+    }
+    // specific person
     const allNames=[...new Set(allRecs.flatMap(r=>(r.advItems||[]).map(x=>x.name.toLowerCase())))];
     const mentionedName=allNames.find(n=>q.includes(n.toLowerCase())||n.toLowerCase().split(' ').some(part=>part.length>2&&q.includes(part)));
     if(mentionedName){
-      const entries=allRecs.flatMap(r=>(r.advItems||[]).filter(x=>x.name.toLowerCase()===mentionedName).map(x=>({date:r.date,name:x.name,amt:x.amt})));
+      // check if asking for this month or all-time
+      const useAll=q.includes('all time')||q.includes('total')||q.includes('abtak')||q.includes('ever');
+      const recs=useAll?allRecs:monthRecs;
+      const entries=recs.flatMap(r=>(r.advItems||[]).filter(x=>x.name.toLowerCase()===mentionedName).map(x=>({date:r.date,name:x.name,amt:x.amt})));
       const total=entries.reduce((a,x)=>a+x.amt,0);
-      return`${entries[0]?.name||mentionedName.toUpperCase()} — Total Advance: ₹${fmt(total)}\n${entries.map(x=>`${x.date}: ₹${fmt(x.amt)}`).join('\n')}`;
+      const label=useAll?'All-time':'This month';
+      return`${entries[0]?.name||mentionedName.toUpperCase()} — ${label} Advance: ₹${fmt(total)}\n${entries.map(x=>`${x.date}: ₹${fmt(x.amt)}`).join('\n')||'No entries'}`;
     }
-    const total=monthRecs.reduce((a,r)=>a+(r.advTotal||0),0);
-    const breakdown=monthRecs.flatMap(r=>(r.advItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
-    return`This month advances: ₹${fmt(total)}\n${breakdown.join('\n')||'None'}`;
+    // month total
+    const useAll=q.includes('all time')||q.includes('abtak')||q.includes('ever');
+    const recs=useAll?allRecs:monthRecs;
+    const total=recs.reduce((a,r)=>a+(r.advTotal||0),0);
+    const breakdown=recs.flatMap(r=>(r.advItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
+    const label=useAll?'All-time':'This month';
+    return`👷 ${label} Advances: ₹${fmt(total)}\n\nDay-wise:\n${breakdown.join('\n')||'No advances recorded'}`;
   }
   if(q.includes('fuel')||q.includes('hsd')||q.includes('ms')||q.includes('diesel')||q.includes('petrol')){
     const hsd=monthRecs.reduce((a,r)=>a+(r.hsdNet||0),0);
@@ -3331,13 +3348,6 @@ function mgrLocalAnswer(q){
     const exp=monthRecs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
     const adv=monthRecs.reduce((a,r)=>a+(r.advTotal||0),0);
     return`This month (${monthRecs.length} days):\nHSD: ${hsd.toFixed(1)}L | MS: ${ms.toFixed(1)}L\nFuel: ₹${fmt(fuel)}\nCash: ₹${fmt(cash)}\nExpenses: ₹${fmt(exp)}\nAdvances: ₹${fmt(adv)}`;
-  }
-  // ── STAFF QUERIES — "all advances", "who got advance", "staff advance"
-  if(q.includes('all advance')||q.includes('staff advance')||q.includes('who got')){
-    const advMap={};allRecs.forEach(r=>(r.advItems||[]).forEach(x=>{advMap[x.name]=(advMap[x.name]||0)+x.amt;}));
-    const sorted=Object.entries(advMap).sort(([,a],[,b])=>b-a);
-    const total=sorted.reduce((a,[,v])=>a+v,0);
-    return`👷 All Staff Advances:\nTotal: ₹${fmt(total)}\n\n${sorted.map(([n,a])=>`${n}: ₹${fmt(a)}`).join('\n')||'None'}`;
   }
   // HO/Bank summary
   if(q.includes('ho')||q.includes('bank')||q.includes('deposit')){
@@ -3512,20 +3522,32 @@ function bellaLocalAnswer(q){
 
   // Advance
   if(q.includes('advance')||q.includes('adv')){
+    // "all advance" / "who got" / "staff advance" → all-time staff breakdown
+    if(q.includes('all advance')||q.includes('staff advance')||q.includes('who got')||q.includes('sabka')){
+      const advMap={};allRecs.forEach(r=>(r.advItems||[]).forEach(x=>{advMap[x.name]=(advMap[x.name]||0)+x.amt;}));
+      const sorted=Object.entries(advMap).sort(([,a],[,b])=>b-a);
+      const total=sorted.reduce((a,[,v])=>a+v,0);
+      return`👷 All Staff Advances (all time):\nTotal: ₹${fmt(total)}\n\n${sorted.map(([n,a])=>`${n}: ₹${fmt(a)}`).join('\n')||'None'}`;
+    }
     // Check if a specific name is mentioned
     const allNames=[...new Set(allRecs.flatMap(r=>(r.advItems||[]).map(x=>x.name.toLowerCase())))];
     const mentionedName=allNames.find(n=>q.includes(n.toLowerCase())||n.toLowerCase().split(' ').some(part=>part.length>2&&q.includes(part)));
     if(mentionedName){
-      // Filter by that specific person
-      const entries=allRecs.flatMap(r=>(r.advItems||[]).filter(x=>x.name.toLowerCase()===mentionedName).map(x=>({date:r.date,name:x.name,amt:x.amt})));
+      const useAll=q.includes('all time')||q.includes('total')||q.includes('abtak')||q.includes('ever');
+      const recs=useAll?allRecs:monthRecs;
+      const entries=recs.flatMap(r=>(r.advItems||[]).filter(x=>x.name.toLowerCase()===mentionedName).map(x=>({date:r.date,name:x.name,amt:x.amt})));
       const total=entries.reduce((a,x)=>a+x.amt,0);
       const lines=entries.map(x=>`${x.date}: ₹${fmt(x.amt)}`).join('\n');
-      return`${entries[0]?.name||mentionedName.toUpperCase()} — Total Advance: ₹${fmt(total)}\n\nEntries:\n${lines||'No advance found'}`;
+      const label=useAll?'All-time':'This month';
+      return`${entries[0]?.name||mentionedName.toUpperCase()} — ${label} Advance: ₹${fmt(total)}\n\nEntries:\n${lines||'No advance found'}`;
     }
-    // No name mentioned — show this month total
-    const total=monthRecs.reduce((a,r)=>a+(r.advTotal||0),0);
-    const breakdown=monthRecs.flatMap(r=>(r.advItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
-    return`This month total advances: ₹${fmt(total)}\n\nBreakdown:\n${breakdown.join('\n')||'No advances recorded'}`;
+    // No name mentioned — show this month total with day-wise breakdown
+    const useAll=q.includes('all time')||q.includes('abtak')||q.includes('ever');
+    const recs=useAll?allRecs:monthRecs;
+    const total=recs.reduce((a,r)=>a+(r.advTotal||0),0);
+    const breakdown=recs.flatMap(r=>(r.advItems||[]).map(x=>`${r.date} ${x.name}: ₹${fmt(x.amt)}`));
+    const label=useAll?'All-time':'This month';
+    return`👷 ${label} Advances: ₹${fmt(total)}\n\nBreakdown:\n${breakdown.join('\n')||'No advances recorded'}`;
   }
 
   // Fuel / HSD / MS / diesel / petrol
@@ -3603,7 +3625,7 @@ function bellaLocalAnswer(q){
   }
 
   // Summary / all
-  if(q.includes('summary')||q.includes('all')||q.includes('total')){
+  if(q.includes('summary')||(q.includes('total')&&!q.includes('adv')&&!q.includes('advance')&&!q.includes('expense')&&!q.includes('kharch'))||q.includes(' all ')||q===('all')){
     const hsd=monthRecs.reduce((a,r)=>a+(r.hsdNet||0),0);
     const ms=monthRecs.reduce((a,r)=>a+(r.msNet||0),0);
     const fuel=monthRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
@@ -4475,9 +4497,9 @@ function syncEditInputsToTarget(){
   editTarget.acctTr=gv('em_acctTr');
   editTarget.hoBank=gv('em_hoBank');
   editTarget.bf=gv('em_bf');
-  // Nozzle closings
-  NOZZLES_HSD.forEach(n=>{const v=gv('em_cl_'+n);if(v)editTarget['cl_'+n]=v;});
-  NOZZLES_MS.forEach(n=>{const v=gv('em_cl_'+n);if(v)editTarget['cl_'+n]=v;});
+  // Nozzle closings — always update even if 0
+  NOZZLES_HSD.forEach(n=>{const el=document.getElementById('em_cl_'+n);if(el&&el.value!=='')editTarget['cl_'+n]=parseFloat(el.value)||0;});
+  NOZZLES_MS.forEach(n=>{const el=document.getElementById('em_cl_'+n);if(el&&el.value!=='')editTarget['cl_'+n]=parseFloat(el.value)||0;});
   // Item lists amounts
   (editTarget.advItems||[]).forEach((x,i)=>{const v=gv(`em_adv_amt_${i}`);if(v!==undefined&&document.getElementById(`em_adv_amt_${i}`))x.amt=v;});
   (editTarget.creditSaleItems||[]).forEach((x,i)=>{const v=gv(`em_cs_amt_${i}`);if(document.getElementById(`em_cs_amt_${i}`))x.amt=v;});
