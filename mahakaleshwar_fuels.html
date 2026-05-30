@@ -392,6 +392,7 @@ input:focus{border-color:var(--ioc-red);box-shadow:0 0 0 2px rgba(208,30,30,.1);
         <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('total advance this month')">Advances this month</button>
         <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('fuel sales this month')">Fuel this month</button>
         <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('profit this month')">Profit this month</button>
+        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('tanker expense this month')">Tanker this month</button>
         <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAsk('summary')">Full Summary</button>
       </div>
     </div>
@@ -412,6 +413,7 @@ input:focus{border-color:var(--ioc-red);box-shadow:0 0 0 2px rgba(208,30,30,.1);
         <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAskMgr('total expense this month')">Expenses this month</button>
         <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAskMgr('total advance this month')">Advances this month</button>
         <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAskMgr('fuel sales this month')">Fuel this month</button>
+        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAskMgr('tanker expense this month')">Tanker this month</button>
         <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="quickAskMgr('final cash all time')">All Final Cash</button>
       </div>
     </div>
@@ -943,9 +945,10 @@ async function confirmSave(){
   cloudData.records.unshift({...d,savedAt:new Date().toISOString()});
 
   // ── AUTO-SYNC CREDIT SALES → Credit Ledger ──────────────────────────────
-  // Remove any existing credit entries for this date (to avoid duplicates on re-save)
-  creditData=creditData.filter(t=>!(t.date===d.date&&t.source==='daily_sales'));
-  // Add fresh entries from today's credit sales
+  // Remove any existing entries for this date that came from daily sales
+  // (both credit-sale credits AND deposit-payments, to avoid duplicates on re-save)
+  creditData=creditData.filter(t=>!(t.date===d.date&&(t.source==='daily_sales'||t.source==='daily_deposit')));
+  // Add fresh credit entries from today's credit sales
   (d.creditSaleItems||[]).forEach(x=>{
     if(x.name&&x.amt>0){
       creditData.push({
@@ -955,6 +958,20 @@ async function confirmSave(){
         date:d.date,
         note:`From Daily Sales ${d.date}`,
         source:'daily_sales',
+        savedAt:new Date().toISOString()
+      });
+    }
+  });
+  // Deposits from a party = that party paying back → register as PAYMENT in credit ledger
+  (d.depositItems||[]).forEach(x=>{
+    if(x.name&&x.amt>0){
+      creditData.push({
+        party:x.name,
+        type:'payment',
+        amt:x.amt,
+        date:d.date,
+        note:`Deposit from Daily Sales ${d.date}`,
+        source:'daily_deposit',
         savedAt:new Date().toISOString()
       });
     }
@@ -3245,7 +3262,7 @@ async function askQueryMgr(){
   // Manager data context — operational only, NO profit/margin figures
   let data=`Today:${today}  MonthStart:${mStart}\nNozzles — HSD:${NOZZLES_HSD.join(',')}  MS:${NOZZLES_MS.join(',')}\n\nDAILY RECORDS (most recent first):\n`;
   cloudData.records.slice(0,90).forEach(r=>{
-    data+=`DATE:${r.date} Fuel:₹${(r.fuelTotal||0).toFixed(0)} HSD:${(r.hsdNet||0).toFixed(1)}L@₹${r.hsdRsp||0} MS:${(r.msNet||0).toFixed(1)}L@₹${r.msRsp||0} Paytm:₹${(r.paytmTotal||0).toFixed(0)} OTP:₹${(r.otp||0).toFixed(0)} HOBank:₹${(r.hoBank||0).toFixed(0)} Cash:₹${(r.finalCash||0).toFixed(0)}\n`;
+    data+=`DATE:${r.date} Fuel:₹${(r.fuelTotal||0).toFixed(0)} HSD:${(r.hsdNet||0).toFixed(1)}L@₹${r.hsdRsp||0} MS:${(r.msNet||0).toFixed(1)}L@₹${r.msRsp||0} Paytm:₹${(r.paytmTotal||0).toFixed(0)} OTP:₹${(r.otp||0).toFixed(0)} HOBank:₹${(r.hoBank||0).toFixed(0)} AcctTr:₹${(r.acctTr||0).toFixed(0)} Tanker:₹${(r.tanker||0).toFixed(0)} Cash:₹${(r.finalCash||0).toFixed(0)}\n`;
     if((r.pumpExpItems||[]).length)data+=`   Exp: ${r.pumpExpItems.map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
     if(r.otherExp)data+=`   OtherExp: ${r.otherExpName||'misc'}=₹${r.otherExp}\n`;
     if((r.advItems||[]).length)data+=`   Adv: ${r.advItems.map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
@@ -3264,6 +3281,8 @@ IMPORTANT: You are the MANAGER's assistant. NEVER discuss or reveal profit, marg
 
 RULES:
 - Use exact numbers from the data. If a value isn't present, say so. Never invent figures.
+- You can answer about ANY operational field per day, this month, or all-time: fuel sales, HSD/MS litres & rates, nozzle readings, Paytm, OTP, HO/Bank deposits, Account Transfer, Tanker expense, pump expenses (by category), Other expense, advances (by employee), credit sales, deposits received, balance forward, and final cash. If asked for a total over a period, sum that field across those days and show a short day-wise breakdown.
+- Handle tiny/simple questions directly and confidently (e.g. "tanker this month", "otp yesterday", "how much petrol today", "ramu ka advance"). Never say you can't find something that is clearly in the data.
 - Use ₹ for money and "L" for litres.
 - Understand Hinglish (kal=yesterday, aaj=today, kitna=how much, kharcha=expense, sabka=everyone's, poora=all).
 - Keep answers short and scannable: headline number first, then a brief day-wise or person-wise breakdown if useful. Plain text only — no markdown, no asterisks, no tables. Line breaks and simple "•" bullets at most.
@@ -3284,12 +3303,64 @@ ${data}`,
   btn.disabled=false;btn.textContent='Ask →';
 }
 
+// ── SHARED HELPER: sum a per-day numeric field with month/all-time scope ──────
+// Used by both Bella (owner) and MF Assistant (manager) for simple field queries.
+function sumFieldAnswer(q,label,emoji,fieldFn){
+  const today=new Date().toISOString().slice(0,10);
+  const ms2=new Date();ms2.setDate(1);const mStart=ms2.toISOString().slice(0,10);
+  const allRecs=cloudData.records;
+  const monthRecs=allRecs.filter(r=>r.date>=mStart&&r.date<=today);
+  const useAll=q.includes('all time')||q.includes('alltime')||q.includes('all-time')||q.includes('ever')||q.includes('total ever')||q.includes('abtak')||q.includes('ab tak')||q.includes('poora')||q.includes('overall')||q.includes('till now')||q.includes('so far');
+  const useToday=q.includes('today')||q.includes('aaj');
+  const useYesterday=q.includes('yesterday')||q.includes('kal');
+  if(useToday){
+    const r=allRecs.find(r=>r.date===today);const v=r?fieldFn(r):0;
+    return`${emoji} ${label} — Today (${today}): ₹${fmt(v)}`;
+  }
+  if(useYesterday){
+    const y=new Date();y.setDate(y.getDate()-1);const yStr=y.toISOString().slice(0,10);
+    const r=allRecs.find(r=>r.date===yStr);const v=r?fieldFn(r):0;
+    return`${emoji} ${label} — Yesterday (${yStr}): ₹${fmt(v)}`;
+  }
+  const recs=(useAll?[...allRecs]:[...monthRecs]).sort((a,b)=>b.date.localeCompare(a.date));
+  const total=recs.reduce((a,r)=>a+(fieldFn(r)||0),0);
+  const scope=useAll?`All-time (${recs.length} days)`:`This month (${recs.length} days)`;
+  const dayLines=recs.filter(r=>(fieldFn(r)||0)>0).map(r=>`${r.date}: ₹${fmt(fieldFn(r))}`).join('\n');
+  return`${emoji} ${label} — ${scope}:\nTotal: ₹${fmt(total)}\n\nDay-wise:\n${dayLines||'No entries recorded'}`;
+}
+
 function mgrLocalAnswer(q){
   q=q.toLowerCase();
   const today=new Date().toISOString().slice(0,10);
   const ms2=new Date();ms2.setDate(1);const mStart=ms2.toISOString().slice(0,10);
   const monthRecs=cloudData.records.filter(r=>r.date>=mStart&&r.date<=today);
   const allRecs=cloudData.records;
+
+  // ── TANKER expense
+  if(q.includes('tanker')){
+    return sumFieldAnswer(q,'Tanker Expense','🚛',r=>r.tanker||0);
+  }
+  // ── ACCOUNT TRANSFER
+  if(q.includes('account transfer')||q.includes('acct transfer')||q.includes('acct tr')||q.includes('transfer')){
+    return sumFieldAnswer(q,'Account Transfer','🔄',r=>r.acctTr||0);
+  }
+  // ── OTHER EXPENSE (misc)
+  if(q.includes('other expense')||q.includes('other exp')||q.includes('misc')||q.includes('other kharch')){
+    return sumFieldAnswer(q,'Other Expense','📦',r=>r.otherExp||0);
+  }
+  // ── MOBIL sales
+  if(q.includes('mobil')||q.includes('lubricant')||q.includes('lube')){
+    return sumFieldAnswer(q,'Mobil Sales','🔧',r=>r.mobilTotal||0);
+  }
+  // ── DEPOSITS received
+  if(q.includes('deposit')&&!q.includes('ho')&&!q.includes('bank')){
+    return sumFieldAnswer(q,'Deposits Received','💵',r=>r.depositTotal||0);
+  }
+  // ── BALANCE FORWARD / opening cash
+  if(q.includes('bf')||q.includes('balance forward')||q.includes('opening cash')){
+    const r=allRecs.find(r=>r.date===today)||allRecs[0];
+    return r?`🔁 Balance Forward (${r.date}): ₹${fmt(r.bf||0)}\n💰 That day's Final Cash → next BF: ₹${fmt(r.finalCash)}`:'No records yet.';
+  }
 
   // ── DATE DETECTION — "sale on 14th", "14 may", "on 8th" etc
   const dateMatch=q.match(/(\d{1,2})(st|nd|rd|th)?(\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*)?/i);
@@ -3422,9 +3493,9 @@ function mgrLocalAnswer(q){
   if(lastRec){
     const adv=(lastRec.advItems||[]).map(x=>`  • ${x.name}: ₹${fmt(x.amt)}`).join('\n');
     const exp=(lastRec.pumpExpItems||[]).map(x=>`  • ${x.name}: ₹${fmt(x.amt)}`).join('\n');
-    return`⛽ Last record (${lastRec.date}):\n\nHSD: ${(lastRec.hsdNet||0).toFixed(2)} L = ₹${fmt(lastRec.hsdAmt)}\nMS: ${(lastRec.msNet||0).toFixed(2)} L = ₹${fmt(lastRec.msAmt)}\nPaytm: ₹${fmt(lastRec.paytmTotal||0)}\nOTP: ₹${fmt(lastRec.otp||0)}\n${adv?'Advances:\n'+adv:''}\n${exp?'Expenses:\n'+exp:''}\n💰 Final Cash: ₹${fmt(lastRec.finalCash)}\n\nAsk me anything! Try:\n"14th sale" · "bhoju advance" · "h6 nozzle" · "this month fuel"`;
+    return`⛽ Last record (${lastRec.date}):\n\nHSD: ${(lastRec.hsdNet||0).toFixed(2)} L = ₹${fmt(lastRec.hsdAmt)}\nMS: ${(lastRec.msNet||0).toFixed(2)} L = ₹${fmt(lastRec.msAmt)}\nPaytm: ₹${fmt(lastRec.paytmTotal||0)}\nOTP: ₹${fmt(lastRec.otp||0)}\n${adv?'Advances:\n'+adv:''}\n${exp?'Expenses:\n'+exp:''}\n💰 Final Cash: ₹${fmt(lastRec.finalCash)}\n\nAsk me anything! Try:\n"tanker this month" · "otp yesterday" · "h6 nozzle" · "bhoju advance" · "mobil all time" · "ho bank this month"`;
   }
-  return`MF Assistant ready! Try:\n"14th sale" · "h6 nozzle total" · "bhoju advance" · "expense this month" · "paytm today"`;
+  return`MF Assistant ready! Try:\n"14th sale" · "tanker this month" · "h6 nozzle total" · "bhoju advance" · "otp this month" · "paytm today"`;
 }
 
 function addMgrBubble(role,text){
@@ -3450,7 +3521,7 @@ async function askQuery(){
   // Build a rich, compact data context for Bella
   let data=`Today:${today}  MonthStart:${mStart}\nHSD margin:₹${HSD_MARGIN}/L   MS margin:₹${MS_MARGIN}/L\nNozzles — HSD:${NOZZLES_HSD.join(',')}  MS:${NOZZLES_MS.join(',')}\n\nDAILY RECORDS (most recent first):\n`;
   cloudData.records.slice(0,90).forEach(r=>{
-    data+=`DATE:${r.date} Fuel:₹${(r.fuelTotal||0).toFixed(0)} HSD:${(r.hsdNet||0).toFixed(1)}L@₹${r.hsdRsp||0} MS:${(r.msNet||0).toFixed(1)}L@₹${r.msRsp||0} Paytm:₹${(r.paytmTotal||0).toFixed(0)} OTP:₹${(r.otp||0).toFixed(0)} HOBank:₹${(r.hoBank||0).toFixed(0)} Cash:₹${(r.finalCash||0).toFixed(0)} Profit:₹${(r.netProfit||0).toFixed(0)}\n`;
+    data+=`DATE:${r.date} Fuel:₹${(r.fuelTotal||0).toFixed(0)} HSD:${(r.hsdNet||0).toFixed(1)}L@₹${r.hsdRsp||0} MS:${(r.msNet||0).toFixed(1)}L@₹${r.msRsp||0} Paytm:₹${(r.paytmTotal||0).toFixed(0)} OTP:₹${(r.otp||0).toFixed(0)} HOBank:₹${(r.hoBank||0).toFixed(0)} AcctTr:₹${(r.acctTr||0).toFixed(0)} Tanker:₹${(r.tanker||0).toFixed(0)} Cash:₹${(r.finalCash||0).toFixed(0)} Profit:₹${(r.netProfit||0).toFixed(0)}\n`;
     if((r.pumpExpItems||[]).length)data+=`   Exp: ${r.pumpExpItems.map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
     if(r.otherExp)data+=`   OtherExp: ${r.otherExpName||'misc'}=₹${r.otherExp}\n`;
     if((r.advItems||[]).length)data+=`   Adv: ${r.advItems.map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
@@ -3475,6 +3546,8 @@ RULES:
 - Use ₹ for money, and "L" for litres. Indian number formatting where natural.
 - "Profit" = the netProfit figure already computed per day (HSD litres×₹${HSD_MARGIN} + MS litres×₹${MS_MARGIN} + mobil − pump expenses − tanker − advances − other expense). Don't recompute it differently.
 - "Final cash" / "BF" = the finalCash figure for that day.
+- You can answer about ANY field per day, this month, or all-time: fuel sales, HSD/MS litres & rates, nozzle readings, Paytm, OTP, HO/Bank deposits, Account Transfer, Tanker expense, pump expenses (by category), Other expense, advances (by employee), credit sales, deposits received, balance forward, final cash, and profit. If asked for a total over a period, sum the relevant field across those days and show a short day-wise breakdown.
+- Handle tiny/simple questions directly and confidently (e.g. "tanker this month", "otp yesterday", "how much petrol today", "ramu ka advance"). Never say you can't find something that is clearly in the data.
 - When asked about a person, sum across their entries and show a short day-wise breakdown.
 - Understand Hinglish too (kal=yesterday, aaj=today, kitna=how much, kharcha=expense, munafa=profit, sabka=everyone's, poora=all/total).
 - Keep answers tight and scannable: a headline number first, then a short breakdown if useful. Plain text only — no markdown symbols, no tables, no asterisks. Use line breaks and simple "•" bullets at most.
@@ -3502,6 +3575,33 @@ function bellaLocalAnswer(q){
   const ms2=new Date();ms2.setDate(1);const mStart=ms2.toISOString().slice(0,10);
   const monthRecs=cloudData.records.filter(r=>r.date>=mStart&&r.date<=today);
   const allRecs=cloudData.records;
+
+  // ── SPECIFIC FIELD QUERIES (checked first so "tanker this month" etc. work) ──
+  if(q.includes('tanker')){
+    return sumFieldAnswer(q,'Tanker Expense','🚛',r=>r.tanker||0);
+  }
+  if(q.includes('account transfer')||q.includes('acct transfer')||q.includes('acct tr')||(q.includes('transfer')&&!q.includes('bank'))){
+    return sumFieldAnswer(q,'Account Transfer','🔄',r=>r.acctTr||0);
+  }
+  if(q.includes('other expense')||q.includes('other exp')||q.includes('misc')||q.includes('other kharch')){
+    return sumFieldAnswer(q,'Other Expense','📦',r=>r.otherExp||0);
+  }
+  if(q.includes('mobil')||q.includes('lubricant')||q.includes('lube')){
+    return sumFieldAnswer(q,'Mobil Sales','🔧',r=>r.mobilTotal||0);
+  }
+  if(q.includes('ho')&&q.includes('bank')||q.includes('ho/bank')||q.includes('hobank')){
+    return sumFieldAnswer(q,'HO / Bank Deposit','🏦',r=>r.hoBank||0);
+  }
+  if((q.includes('deposit'))&&!q.includes('ho')&&!q.includes('bank')){
+    return sumFieldAnswer(q,'Deposits Received','💵',r=>r.depositTotal||0);
+  }
+  if(q.includes('otp')){
+    return sumFieldAnswer(q,'OTP','📱',r=>r.otp||0);
+  }
+  if(q.includes('bf')||q.includes('balance forward')||q.includes('opening cash')){
+    const r=allRecs.find(r=>r.date===today)||allRecs[0];
+    return r?`🔁 Balance Forward (${r.date}): ₹${fmt(r.bf||0)}\n💰 That day's Final Cash → next BF: ₹${fmt(r.finalCash)}`:'No records yet.';
+  }
 
   // ── YESTERDAY / TODAY / LAST WEEK
   const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
@@ -4646,10 +4746,13 @@ async function saveEditRecord(){
     cloudData.prevClosing=nc;cloudData.prevBF=d.finalCash;
   }
 
-  // Sync credit data
-  creditData=creditData.filter(t=>!(t.date===d.date&&t.source==='daily_sales'));
+  // Sync credit data — credits from credit-sales, payments from deposits
+  creditData=creditData.filter(t=>!(t.date===d.date&&(t.source==='daily_sales'||t.source==='daily_deposit')));
   (d.creditSaleItems||[]).forEach(x=>{
     if(x.name&&x.amt>0)creditData.push({party:x.name,type:'credit',amt:x.amt,date:d.date,note:`From Daily Sales ${d.date}`,source:'daily_sales',savedAt:new Date().toISOString()});
+  });
+  (d.depositItems||[]).forEach(x=>{
+    if(x.name&&x.amt>0)creditData.push({party:x.name,type:'payment',amt:x.amt,date:d.date,note:`Deposit from Daily Sales ${d.date}`,source:'daily_deposit',savedAt:new Date().toISOString()});
   });
   await cloudSet(STORE_KEY_CREDIT,creditData);
 
