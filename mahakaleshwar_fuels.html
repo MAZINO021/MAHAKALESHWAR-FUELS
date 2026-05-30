@@ -493,11 +493,26 @@ function preloadFirebaseScripts(){return Promise.resolve();}
 
 function syncStatus(s,m){const dot=document.getElementById('syncDot'),txt=document.getElementById('syncMsg');if(dot)dot.className='sync-dot '+s;if(txt)txt.textContent=m;}
 
+// Make every record safe for date operations. Records with a valid date pass through.
+// A record that has real data but a missing/invalid date is kept with a placeholder
+// date (so no data is lost) instead of crashing the UI.
+function sanitizeRecords(){
+  if(!Array.isArray(cloudData.records))cloudData.records=[];
+  const dateOk=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d);
+  cloudData.records=cloudData.records.filter(r=>r!=null&&typeof r==='object').map(r=>{
+    if(dateOk(r.date))return r;
+    // Try to recover a date from savedAt; else mark as unknown so it stays visible
+    if(r.savedAt&&dateOk(String(r.savedAt).slice(0,10)))return{...r,date:String(r.savedAt).slice(0,10)};
+    return{...r,date:'0000-00-00'};
+  });
+}
+
 async function loadCloud(){
   syncStatus('loading','Connecting to Firebase…');
   try{
     const main=await cloudGet(STORE_KEY);
     if(main){cloudData.records=main.records||[];cloudData.prevClosing=main.prevClosing||{};cloudData.prevBF=main.prevBF||0;}
+    sanitizeRecords();
     const cum=await cloudGet(STORE_KEY_CUM);if(cum)cloudData.cumulative={...cloudData.cumulative,...cum};
     const att=await cloudGet(STORE_KEY_ATT);if(att)attData=att;
     const ins=await cloudGet(STORE_KEY_INSPECT);if(ins)inspectData=ins;
@@ -519,6 +534,7 @@ async function loadCloud(){
     try{
       const main=JSON.parse(localStorage.getItem(STORE_KEY)||'null');
       if(main){cloudData.records=main.records||[];cloudData.prevClosing=main.prevClosing||{};cloudData.prevBF=main.prevBF||0;}
+      sanitizeRecords();
       const cum=JSON.parse(localStorage.getItem(STORE_KEY_CUM)||'null');if(cum)cloudData.cumulative={...cloudData.cumulative,...cum};
       const att=JSON.parse(localStorage.getItem(STORE_KEY_ATT)||'null');if(att)attData=att;
       const ins=JSON.parse(localStorage.getItem(STORE_KEY_INSPECT)||'null');if(ins)inspectData=ins;
@@ -1996,10 +2012,10 @@ function renderOwnerGrowth(){
   }
 
   const dayP=profitOf(cloudData.records.filter(r=>r.date===today));
-  const mP=profitOf(cloudData.records.filter(r=>r.date.startsWith(monthStr)));
-  const prevMP=profitOf(cloudData.records.filter(r=>r.date.startsWith(prevMonthStr)));
-  const yP=profitOf(cloudData.records.filter(r=>r.date.startsWith(yearStr)));
-  const prevYP=profitOf(cloudData.records.filter(r=>r.date.startsWith(prevYearStr)));
+  const mP=profitOf(cloudData.records.filter(r=>(r.date||"").startsWith(monthStr)));
+  const prevMP=profitOf(cloudData.records.filter(r=>(r.date||"").startsWith(prevMonthStr)));
+  const yP=profitOf(cloudData.records.filter(r=>(r.date||"").startsWith(yearStr)));
+  const prevYP=profitOf(cloudData.records.filter(r=>(r.date||"").startsWith(prevYearStr)));
   const allP=profitOf(cloudData.records);
 
   const lrfKey=`lrf_${monthStr}`;
@@ -2442,8 +2458,8 @@ function renderOwnerProfitInto(target){
     return{hsdL:h,msL:m,gross,exp,net:gross-exp+testInc};
   }
   const dayP=profitOf(cloudData.records.filter(r=>r.date===today));
-  const mP=profitOf(cloudData.records.filter(r=>r.date.startsWith(monthStr)));
-  const yP=profitOf(cloudData.records.filter(r=>r.date.startsWith(today.slice(0,4))));
+  const mP=profitOf(cloudData.records.filter(r=>(r.date||"").startsWith(monthStr)));
+  const yP=profitOf(cloudData.records.filter(r=>(r.date||"").startsWith(today.slice(0,4))));
   const aP=profitOf(cloudData.records);
   // Recent days profit breakdown (last 15 days, newest first)
   const recent=[...cloudData.records].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,15);
@@ -2618,8 +2634,8 @@ function renderOwnerProfit(){
   }
 
   const todayRec=cloudData.records.filter(r=>r.date===today);
-  const monthRecs=cloudData.records.filter(r=>r.date.startsWith(monthStr));
-  const yearRecs=cloudData.records.filter(r=>r.date.startsWith(yearStr));
+  const monthRecs=cloudData.records.filter(r=>(r.date||"").startsWith(monthStr));
+  const yearRecs=cloudData.records.filter(r=>(r.date||"").startsWith(yearStr));
   const allRecs=cloudData.records;
 
   const tP=profitOf(todayRec);
@@ -2742,8 +2758,8 @@ function renderOwnerPortfolio(){
   const prevMonth=new Date();prevMonth.setMonth(prevMonth.getMonth()-1);
   const prevMonthStr=`${prevMonth.getFullYear()}-${String(prevMonth.getMonth()+1).padStart(2,'0')}`;
 
-  const thisMonthRecs=cloudData.records.filter(r=>r.date.startsWith(monthStr));
-  const prevMonthRecs=cloudData.records.filter(r=>r.date.startsWith(prevMonthStr));
+  const thisMonthRecs=cloudData.records.filter(r=>(r.date||"").startsWith(monthStr));
+  const prevMonthRecs=cloudData.records.filter(r=>(r.date||"").startsWith(prevMonthStr));
   const todayRecs=cloudData.records.filter(r=>r.date===today);
 
   function profitSum(recs){return recs.reduce((a,r)=>a+(r.netProfit||0),0);}
@@ -2752,9 +2768,9 @@ function renderOwnerPortfolio(){
   const prevMonthProfit=profitSum(prevMonthRecs);
   const monthGrowth=prevMonthProfit?((thisMonthProfit-prevMonthProfit)/prevMonthProfit*100):null;
 
-  const yearRecs=cloudData.records.filter(r=>r.date.startsWith(today.slice(0,4)));
+  const yearRecs=cloudData.records.filter(r=>(r.date||"").startsWith(today.slice(0,4)));
   const prevYearStr=String(parseInt(today.slice(0,4))-1);
-  const prevYearRecs=cloudData.records.filter(r=>r.date.startsWith(prevYearStr));
+  const prevYearRecs=cloudData.records.filter(r=>(r.date||"").startsWith(prevYearStr));
   const yearProfit=profitSum(yearRecs);const prevYearProfit=profitSum(prevYearRecs);
   const yearGrowth=prevYearProfit?((yearProfit-prevYearProfit)/prevYearProfit*100):null;
 
@@ -2931,8 +2947,8 @@ function showPortfolioResult(hsdRsp,msRsp){
   const today=todayKey0();const monthStr=today.slice(0,7);
   const prevMonth=new Date();prevMonth.setMonth(prevMonth.getMonth()-1);
   const prevMonthStr=`${prevMonth.getFullYear()}-${String(prevMonth.getMonth()+1).padStart(2,'0')}`;
-  const thisMonthProfit=cloudData.records.filter(r=>r.date.startsWith(monthStr)).reduce((a,r)=>a+(r.netProfit||0),0);
-  const prevMonthProfit=cloudData.records.filter(r=>r.date.startsWith(prevMonthStr)).reduce((a,r)=>a+(r.netProfit||0),0);
+  const thisMonthProfit=cloudData.records.filter(r=>(r.date||"").startsWith(monthStr)).reduce((a,r)=>a+(r.netProfit||0),0);
+  const prevMonthProfit=cloudData.records.filter(r=>(r.date||"").startsWith(prevMonthStr)).reduce((a,r)=>a+(r.netProfit||0),0);
   const monthGrowthPct=prevMonthProfit&&grandTotal?((thisMonthProfit/grandTotal)*100):null;
 
   const el=document.getElementById('portfolioResult');
@@ -3150,7 +3166,7 @@ function renderCalendar(){
   const lbl=document.getElementById('calMonthLabel');
   if(lbl)lbl.textContent=`${MONTHS[calMonth]} ${calYear}`;
   const monthStr=`${calYear}-${String(calMonth+1).padStart(2,'0')}`;
-  const recMap={};cloudData.records.forEach(r=>{if(r.date&&r.date.startsWith(monthStr))recMap[r.date]=r;});
+  const recMap={};cloudData.records.forEach(r=>{if(r.date&&(r.date||"").startsWith(monthStr))recMap[r.date]=r;});
   const mR=Object.values(recMap);
   const sumEl=document.getElementById('calMonthSummary');
   if(sumEl)sumEl.innerHTML=mR.length?`
