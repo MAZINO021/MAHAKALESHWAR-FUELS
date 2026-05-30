@@ -1948,6 +1948,8 @@ function renderOwnerReports(){
     <div id="ownerSubTabContent"></div>`;
   // override renderOwnerProfit etc to render into ownerSubTabContent
   renderOwnerProfitInto('ownerSubTabContent');
+  const sub=document.getElementById('ownerSubTabContent');
+  if(sub)setTimeout(()=>sub.scrollIntoView({behavior:'smooth',block:'nearest'}),80);
 }
 
 function showOwnerTab(tab){
@@ -1955,10 +1957,17 @@ function showOwnerTab(tab){
     const b=document.getElementById('own_'+t);if(b)b.className='mbtn'+(t===tab?' active':'');
   });
   const target='ownerSubTabContent';
-  if(tab==='profit')renderOwnerProfitInto(target);
-  else if(tab==='portfolio')renderOwnerPortfolioInto(target);
-  else if(tab==='credit')renderOwnerCreditInto(target);
-  else if(tab==='staff')renderOwnerStaffInto(target);
+  const el=document.getElementById(target);
+  try{
+    if(tab==='profit')renderOwnerProfitInto(target);
+    else if(tab==='portfolio')renderOwnerPortfolioInto(target);
+    else if(tab==='credit')renderOwnerCreditInto(target);
+    else if(tab==='staff')renderOwnerStaffInto(target);
+  }catch(err){
+    if(el)el.innerHTML=`<div class="card"><div style="color:var(--ioc-red);font-size:13px">⚠️ Couldn't load ${tab}. ${err.message||''}</div></div>`;
+  }
+  // Ensure the freshly rendered content is visible
+  if(el)setTimeout(()=>el.scrollIntoView({behavior:'smooth',block:'nearest'}),60);
 }
 
 // ── OPTION 2: GROWTH ANALYSIS ─────────────────────────────────────────────────
