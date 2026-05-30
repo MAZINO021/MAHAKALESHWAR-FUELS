@@ -2149,7 +2149,13 @@ function renderOwnerGrowth(){
     </div>
 
     <!-- BAR CHART -->
-    <div class="card"><div class="card-title">📊 Monthly Profit Trend</div>${renderMiniChart()}</div>
+    <div class="card"><div class="card-title">📊 Monthly Profit Trend</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:6px">
+        <div style="height:200px;position:relative"><canvas id="pchartProfit"></canvas></div>
+        <div style="height:200px;position:relative"><canvas id="pchartRevExp"></canvas></div>
+      </div>
+      <div style="height:220px;position:relative"><canvas id="pchartDonut"></canvas></div>
+    </div>
 
     <!-- CUSTOM DATE RANGE -->
     <div class="card"><div class="card-title">📆 Custom Date Range Analysis</div>
@@ -2160,6 +2166,7 @@ function renderOwnerGrowth(){
       <button class="btn-primary" onclick="calcGrowthCustom()">Analyze Range →</button>
       <div id="growthCustomResult" style="margin-top:12px"></div>
     </div>`;
+  setTimeout(drawProfitCharts,50);
 }
 
 function gCard(label,val,pct){
@@ -2372,6 +2379,55 @@ function renderOwnerTestingProfit(fromDate='',toDate=''){
 }
 
 // ── REPORTS SUB-TABS (renders into ownerSubTabContent) ────────────────────────
+// Loads Chart.js once, then runs the callback. Safe to call repeatedly.
+function ensureChartJs(cb){
+  if(window.Chart){cb();return;}
+  if(window._chartJsLoading){
+    const iv=setInterval(()=>{if(window.Chart){clearInterval(iv);cb();}},80);
+    setTimeout(()=>clearInterval(iv),6000);
+    return;
+  }
+  window._chartJsLoading=true;
+  const s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+  s.onload=()=>{window._chartJsLoading=false;cb();};
+  s.onerror=()=>{window._chartJsLoading=false;};
+  document.head.appendChild(s);
+}
+
+// Draws the profit/fuel charts into canvases that already exist in the DOM.
+function drawProfitCharts(){
+  const monthMap={};
+  cloudData.records.forEach(r=>{
+    const mk=r.date.slice(0,7);
+    if(!monthMap[mk])monthMap[mk]={profit:0,hsd:0,ms:0,fuel:0,exp:0};
+    monthMap[mk].profit+=(r.netProfit||0);
+    monthMap[mk].hsd+=(r.hsdNet||0);
+    monthMap[mk].ms+=(r.msNet||0);
+    monthMap[mk].fuel+=(r.fuelTotal||0);
+    monthMap[mk].exp+=(r.pumpExpTotal||0)+(r.tanker||0)+(r.otherExp||0);
+  });
+  const entries=Object.entries(monthMap).sort(([a],[b])=>a.localeCompare(b)).slice(-6);
+  if(!entries.length)return;
+  const labels=entries.map(([mk])=>mk.slice(5)+'/'+mk.slice(0,4));
+  const profits=entries.map(([,v])=>Math.round(v.profit));
+  const fuels=entries.map(([,v])=>Math.round(v.fuel));
+  const exps=entries.map(([,v])=>Math.round(v.exp));
+  const totalHSD=cloudData.records.reduce((a,r)=>a+(r.hsdNet||0),0);
+  const totalMS=cloudData.records.reduce((a,r)=>a+(r.msNet||0),0);
+  ensureChartJs(function(){
+    if(!window.Chart)return;
+    const toINR=v=>v>=10000000?'₹'+(v/10000000).toFixed(1)+'Cr':v>=100000?'₹'+(v/100000).toFixed(1)+'L':v>=1000?'₹'+(v/1000).toFixed(1)+'K':'₹'+v;
+    const defOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11},boxWidth:12}},tooltip:{callbacks:{label:ctx=>toINR(ctx.parsed.y||ctx.parsed||0)}}}};
+    const c1=document.getElementById('pchartProfit');
+    if(c1){if(c1._inst)c1._inst.destroy();c1._inst=new Chart(c1,{type:'bar',data:{labels,datasets:[{label:'Net Profit',data:profits,backgroundColor:profits.map(v=>v>=0?'rgba(29,107,58,0.75)':'rgba(208,30,30,0.75)'),borderColor:profits.map(v=>v>=0?'#1D6B3A':'#D01E1E'),borderWidth:1.5,borderRadius:4}]},options:{...defOpts,scales:{y:{ticks:{callback:toINR},grid:{color:'rgba(0,0,0,0.05)'}},x:{grid:{display:false}}}}});}
+    const c2=document.getElementById('pchartRevExp');
+    if(c2){if(c2._inst)c2._inst.destroy();c2._inst=new Chart(c2,{type:'line',data:{labels,datasets:[{label:'Fuel Revenue',data:fuels,borderColor:'#0A1F5C',backgroundColor:'rgba(10,31,92,0.08)',fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:'#0A1F5C'},{label:'Expenses',data:exps,borderColor:'#D01E1E',backgroundColor:'rgba(208,30,30,0.05)',fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:'#D01E1E'}]},options:{...defOpts,scales:{y:{ticks:{callback:toINR},grid:{color:'rgba(0,0,0,0.05)'}},x:{grid:{display:false}}}}});}
+    const c4=document.getElementById('pchartDonut');
+    if(c4&&(totalHSD+totalMS)>0){if(c4._inst)c4._inst.destroy();c4._inst=new Chart(c4,{type:'doughnut',data:{labels:['HSD (Diesel)','MS (Petrol)'],datasets:[{data:[totalHSD,totalMS],backgroundColor:['rgba(10,31,92,0.8)','rgba(208,30,30,0.75)'],borderColor:['#0A1F5C','#D01E1E'],borderWidth:2,hoverOffset:8}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',labels:{font:{size:11},padding:14}},tooltip:{callbacks:{label:ctx=>ctx.label+': '+Math.round(ctx.raw)+'L ('+Math.round(ctx.raw/(totalHSD+totalMS)*100)+'%)'}}}}});}
+  });
+}
+
 function renderOwnerProfitInto(target){
   const el=document.getElementById(target);if(!el)return;
   const today=todayKey0(),monthStr=today.slice(0,7);
@@ -2389,12 +2445,38 @@ function renderOwnerProfitInto(target){
   const mP=profitOf(cloudData.records.filter(r=>r.date.startsWith(monthStr)));
   const yP=profitOf(cloudData.records.filter(r=>r.date.startsWith(today.slice(0,4))));
   const aP=profitOf(cloudData.records);
+  // Recent days profit breakdown (last 15 days, newest first)
+  const recent=[...cloudData.records].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,15);
+  const rows=recent.map(r=>{
+    const p=profitOf([r]);
+    return`<tr>
+      <td style="font-weight:600">${r.date}</td>
+      <td class="right">${(r.hsdNet||0).toFixed(0)}L</td>
+      <td class="right">${(r.msNet||0).toFixed(0)}L</td>
+      <td class="right">₹${fmt(p.exp)}</td>
+      <td class="right" style="font-weight:700;color:${p.net>=0?'var(--green)':'var(--ioc-red)'}">₹${fmt(p.net)}</td>
+    </tr>`;
+  }).join('');
+  const hasData=cloudData.records.length>0;
   el.innerHTML=`
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
       ${gCard('Today',dayP.net,null)}
       ${gCard('This Month',mP.net-mLRF+mINC,null)}
       ${gCard('This Year',yP.net,null)}
       ${gCard('All Time',aP.net,null)}
+    </div>
+    ${hasData?`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="card" style="margin:0"><div class="card-title">📊 Monthly Net Profit</div><div style="height:200px;position:relative"><canvas id="pchartProfit"></canvas></div></div>
+      <div class="card" style="margin:0"><div class="card-title">📈 Revenue vs Expenses</div><div style="height:200px;position:relative"><canvas id="pchartRevExp"></canvas></div></div>
+    </div>
+    <div class="card"><div class="card-title">🍩 Fuel Mix (All Time)</div><div style="height:220px;position:relative"><canvas id="pchartDonut"></canvas></div></div>
+    `:'<div class="card"><div style="color:var(--ink-light);font-size:13px;text-align:center;padding:16px">No records yet. Charts appear once you save daily sales.</div></div>'}
+    <div class="card"><div class="card-title">📅 Daily Profit Breakdown (Last 15)</div>
+      <div style="overflow-x:auto"><table class="rtable">
+        <thead><tr><th>Date</th><th class="right">HSD</th><th class="right">MS</th><th class="right">Expenses</th><th class="right">Net Profit</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:var(--ink-light);padding:16px">No entries</td></tr>'}</tbody>
+      </table></div>
     </div>
     <div class="card"><div class="card-title">LRF & Incentive — ${monthStr}</div>
       <div class="grid2" style="margin-bottom:10px">
@@ -2404,6 +2486,8 @@ function renderOwnerProfitInto(target){
       <button class="btn-primary" onclick="saveLRF('${monthStr}')">💾 Save</button>
       <div id="lrfMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>
     </div>`;
+  // Draw charts AFTER the canvases are in the DOM
+  if(hasData)setTimeout(drawProfitCharts,50);
 }
 
 function renderOwnerPortfolioInto(target){
