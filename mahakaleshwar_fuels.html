@@ -978,20 +978,9 @@ async function confirmSave(){
       });
     }
   });
-  // Deposits from a party = that party paying back → register as PAYMENT in credit ledger
-  (d.depositItems||[]).forEach(x=>{
-    if(x.name&&x.amt>0){
-      creditData.push({
-        party:x.name,
-        type:'payment',
-        amt:x.amt,
-        date:d.date,
-        note:`Deposit from Daily Sales ${d.date}`,
-        source:'daily_deposit',
-        savedAt:new Date().toISOString()
-      });
-    }
-  });
+  // NOTE: Deposits are NOT pushed here anymore. computeCreditParties() reads
+  // depositItems straight from each record and counts them as payments, so they
+  // subtract from credit balances automatically (works for all records, old & new).
   await cloudSet(STORE_KEY_CREDIT,creditData);
 
   // ── AUTO-SYNC DEPOSITS → Owner Deposits ─────────────────────────────────
@@ -1603,9 +1592,13 @@ async function addRecv(){
 async function removeRecv(i){recvData.splice(i,1);await cloudSet(STORE_KEY_RECV,recvData);renderReceived();}
 
 // ── MODULE 6: CREDIT SALES ────────────────────────────────────────────────────
-// Canonical credit-party computation. Pulls credits from daily-sales records and
-// payments from creditData, matching party names case-insensitively + trimmed.
-// Returns { key: {display, credit, paid, txns:[]} }.
+// Canonical credit-party computation.
+//  • Credits come from each daily record's creditSaleItems (or legacy csTotal)
+//  • Payments come from (a) each daily record's depositItems — a deposit from a
+//    party means that party paid back — AND (b) manual payments in creditData.
+// Party names are matched case-insensitively + trimmed, so "Raju Road Lines",
+// "RAJU ROAD LINES" and "raju road lines " are ONE party. Works retroactively
+// across ALL existing records — no separate sync needed.
 function computeCreditParties(){
   const parties={};
   const keyOf=n=>(n||'').trim().toLowerCase().replace(/\s+/g,' ');
@@ -1615,6 +1608,7 @@ function computeCreditParties(){
     return parties[k];
   }
   cloudData.records.forEach(r=>{
+    // Credits
     (r.creditSaleItems||[]).forEach(item=>{
       const p=getParty(item.name);
       p.credit+=item.amt;
@@ -1625,8 +1619,19 @@ function computeCreditParties(){
       p.credit+=r.csTotal;
       p.txns.push({date:r.date,type:'credit',amt:r.csTotal,note:'Daily Sales',auto:true});
     }
+    // Deposits in the same record = that party paying back → count as PAYMENT
+    (r.depositItems||[]).forEach(dep=>{
+      if(dep&&dep.name&&dep.amt>0){
+        const p=getParty(dep.name);
+        p.paid+=dep.amt;
+        p.txns.push({date:r.date,type:'payment',amt:dep.amt,note:'Deposit (Daily Sales)',auto:true});
+      }
+    });
   });
   creditData.forEach(t=>{
+    // Skip auto deposit-payments that were synced separately — deposits are now
+    // read straight from records above, so counting these too would double up.
+    if(t.source==='daily_deposit')return;
     if(t.type==='payment'){
       const p=getParty(t.party);
       p.paid+=t.amt;
@@ -1745,17 +1750,8 @@ function showCreditParty(name,pObj){
   // Build transaction list from both sources — match name case-insensitively + trimmed
   const norm=s=>(s||'').trim().toLowerCase().replace(/\s+/g,' ');
   const key=norm(name);
-  const autoTxns=[];
-  cloudData.records.forEach(r=>{
-    (r.creditSaleItems||[]).forEach(item=>{
-      if(norm(item.name)===key)autoTxns.push({date:r.date,type:'credit',amt:item.amt,note:'From Daily Sales',auto:true});
-    });
-    if((r.csTotal||0)>0&&!(r.creditSaleItems||[]).length&&key==='credit sale'){
-      autoTxns.push({date:r.date,type:'credit',amt:r.csTotal,note:'From Daily Sales',auto:true});
-    }
-  });
-  const manualTxns=creditData.filter(t=>norm(t.party)===key);
-  const allTxns=[...autoTxns,...manualTxns].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const party=computeCreditParties()[key]||{display:name,credit:0,paid:0,txns:[]};
+  const allTxns=[...party.txns].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 
   let running=0;
   const rows=allTxns.map(t=>{
@@ -4862,13 +4858,11 @@ async function saveEditRecord(){
     cloudData.prevClosing=nc;cloudData.prevBF=d.finalCash;
   }
 
-  // Sync credit data — credits from credit-sales, payments from deposits
+  // Sync credit data — credits from credit-sales. Deposits are read directly from
+  // records by computeCreditParties() as payments, so no deposit push needed here.
   creditData=creditData.filter(t=>!(t.date===d.date&&(t.source==='daily_sales'||t.source==='daily_deposit')));
   (d.creditSaleItems||[]).forEach(x=>{
     if(x.name&&x.amt>0)creditData.push({party:x.name,type:'credit',amt:x.amt,date:d.date,note:`From Daily Sales ${d.date}`,source:'daily_sales',savedAt:new Date().toISOString()});
-  });
-  (d.depositItems||[]).forEach(x=>{
-    if(x.name&&x.amt>0)creditData.push({party:x.name,type:'payment',amt:x.amt,date:d.date,note:`Deposit from Daily Sales ${d.date}`,source:'daily_deposit',savedAt:new Date().toISOString()});
   });
   await cloudSet(STORE_KEY_CREDIT,creditData);
 
