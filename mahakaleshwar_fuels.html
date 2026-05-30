@@ -787,6 +787,7 @@ function renderExpenses(){
       <div id="csList"></div>
     </div>
     <div class="card"><div class="card-title">🔧 Pump Expense</div><div class="grid2" style="margin-bottom:8px"><div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="expAmt" step="0.01"></div><div class="field"><div class="lbl">Category</div><input type="text" id="expName" placeholder="Electricity…"></div></div><button class="btn-secondary" style="margin-bottom:8px" onclick="addExp()">+ Add</button><div id="expList"></div></div>
+    <div class="card"><div class="card-title">📦 Other Expense <span style="font-size:11px;color:var(--ink-light);font-weight:400">(misc — subtracted from cash)</span></div><div class="grid2"><div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="otherExp" value="${draft.otherExp||0}" step="0.01" placeholder="0"></div><div class="field"><div class="lbl">Note</div><input type="text" id="otherExpName" value="${draft.otherExpName||''}" placeholder="Misc / other"></div></div></div>
     <div class="card"><div class="card-title">🚛 Tanker Expense</div><div class="grid2"><div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="tanker" value="${draft.tanker||0}" step="0.01"></div><div class="field"><div class="lbl">Note</div><input type="text" id="tankerName" value="${draft.tankerName||''}" placeholder="Loading charges"></div></div></div>
     <div class="btn-row"><button class="btn-primary" onclick="saveExpenses()">Generate Report →</button></div>`;
   renderAdvList();renderCSList();renderExpList();
@@ -802,14 +803,15 @@ function removeExpItem(i){pumpExpItems.splice(i,1);renderExpList();}
 function renderExpList(){const el=document.getElementById('expList');if(!el)return;el.innerHTML=pumpExpItems.map((x,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">₹${fmt(x.amt)} — ${x.name}</div></div><span class="list-item-amount">₹${fmt(x.amt)}</span><button class="rm-btn" onclick="removeExpItem(${i})">✕</button></div>`).join('');}
 function saveExpenses(){
   draft.otp=gv('otp');draft.tanker=gv('tanker');draft.tankerName=gs('tankerName');draft.acctTr=gv('acctTr');draft.hoBank=gv('hoBank');
+  draft.otherExp=gv('otherExp');draft.otherExpName=gs('otherExpName');
   draft.advItems=[...advItems];draft.creditSaleItems=[...creditSaleItems];draft.pumpExpItems=[...pumpExpItems];
   draft.advTotal=advItems.reduce((a,x)=>a+x.amt,0);
   draft.csTotal=creditSaleItems.reduce((a,x)=>a+x.amt,0);
   draft.pumpExpTotal=pumpExpItems.reduce((a,x)=>a+x.amt,0);
   // Gross = Fuel + BF + Mobil + Deposit (NO rounding — exact float)
   draft.grossTotal=draft.fuelTotal+(draft.bf||0)+(draft.mobilTotal||0)+(draft.depositTotal||0);
-  // Deductions include credit sales (credit is subtracted from cash)
-  const td=draft.paytmTotal+draft.otp+draft.tanker+draft.advTotal+draft.csTotal+draft.pumpExpTotal+draft.acctTr+draft.hoBank;
+  // Deductions include credit sales (credit is subtracted from cash) and other expense
+  const td=draft.paytmTotal+draft.otp+draft.tanker+draft.advTotal+draft.csTotal+draft.pumpExpTotal+draft.acctTr+draft.hoBank+draft.otherExp;
   draft.totalDeductions=td;
   // Final Cash = Gross - All Deductions (exact, no rounding)
   draft.finalCash=draft.grossTotal-td;
@@ -817,7 +819,7 @@ function saveExpenses(){
   draft.hsdMarginAmt=draft.hsdNet*HSD_MARGIN;
   draft.msMarginAmt=draft.msNet*MS_MARGIN;
   draft.grossProfit=draft.hsdMarginAmt+draft.msMarginAmt+(draft.mobilTotal||0);
-  draft.netProfit=draft.grossProfit-draft.pumpExpTotal-draft.tanker-draft.advTotal;
+  draft.netProfit=draft.grossProfit-draft.pumpExpTotal-draft.tanker-draft.advTotal-draft.otherExp;
   draft.date=salesDate;nextStep();
 }
 function renderReport(){
@@ -898,6 +900,7 @@ function renderReport(){
       ${(d.tanker||0)?`<div class="summary-row"><span class="summary-lbl">Tanker Expense${d.tankerName?' — '+d.tankerName:''}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.tanker)}</span></div>`:''}
       ${(d.acctTr||0)?`<div class="summary-row"><span class="summary-lbl">Account Transfer</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.acctTr)}</span></div>`:''}
       ${(d.hoBank||0)?`<div class="summary-row"><span class="summary-lbl">HO / Bank Deposit</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.hoBank)}</span></div>`:''}
+      ${(d.otherExp||0)?`<div class="summary-row"><span class="summary-lbl">Other Expense${d.otherExpName?' — '+d.otherExpName:''}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.otherExp)}</span></div>`:''}
       ${(d.advItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Advance — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
       ${(d.creditSaleItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Credit Sale — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
       ${(d.pumpExpItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Expense — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
@@ -929,7 +932,7 @@ async function confirmSave(){
   if(!confirm('Save and sync to all devices?'))return;
   const btn=document.getElementById('saveBtn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Saving…';
   const d=draft,c=cloudData.cumulative;
-  c.totalAdv=(c.totalAdv||0)+(d.advTotal||0);c.totalExp=(c.totalExp||0)+(d.pumpExpTotal||0)+(d.tanker||0);
+  c.totalAdv=(c.totalAdv||0)+(d.advTotal||0);c.totalExp=(c.totalExp||0)+(d.pumpExpTotal||0)+(d.tanker||0)+(d.otherExp||0);
   c.totalMobil=(c.totalMobil||0)+(d.mobilTotal||0);c.totalDeposit=(c.totalDeposit||0)+(d.depositTotal||0);c.totalCS=(c.totalCS||0)+(d.csTotal||0);
   (d.advItems||[]).forEach(x=>{c.employees=c.employees||{};c.employees[x.name]=(c.employees[x.name]||0)+x.amt;});
   (d.pumpExpItems||[]).forEach(x=>{c.expCats=c.expCats||{};c.expCats[x.name]=(c.expCats[x.name]||0)+x.amt;});
@@ -1955,7 +1958,7 @@ function renderOwnerGrowth(){
     const m=recs.reduce((a,r)=>a+(r.msNet||0),0);
     const fuel=recs.reduce((a,r)=>a+(r.fuelTotal||0),0);
     const gross=h*HSD_MARGIN+m*MS_MARGIN+recs.reduce((a,r)=>a+(r.mobilTotal||0),0);
-    const exp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+    const exp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0)+(r.otherExp||0),0);
     const adv=recs.reduce((a,r)=>a+(r.advTotal||0),0);
     const paytm=recs.reduce((a,r)=>a+(r.paytmTotal||0),0);
     const cs=recs.reduce((a,r)=>a+(r.csTotal||0),0);
@@ -2152,7 +2155,7 @@ function calcGrowthCustom(){
   const h=recs.reduce((a,r)=>a+(r.hsdNet||0),0);
   const ms=recs.reduce((a,r)=>a+(r.msNet||0),0);
   const gross=h*HSD_MARGIN+ms*MS_MARGIN+recs.reduce((a,r)=>a+(r.mobilTotal||0),0);
-  const exp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+  const exp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0)+(r.otherExp||0),0);
   const testInc=testingData.filter(t=>recs.some(r=>r.date===t.date)&&t.type==='sold').reduce((a,t)=>a+t.income,0);
   const net=gross-exp+testInc;
   document.getElementById('growthCustomResult').innerHTML=`
@@ -2352,7 +2355,7 @@ function renderOwnerProfitInto(target){
   function profitOf(recs){
     const h=recs.reduce((a,r)=>a+(r.hsdNet||0),0),m=recs.reduce((a,r)=>a+(r.msNet||0),0);
     const gross=h*HSD_MARGIN+m*MS_MARGIN+recs.reduce((a,r)=>a+(r.mobilTotal||0),0);
-    const exp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+    const exp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0)+(r.otherExp||0),0);
     const testInc=testingData.filter(t=>recs.some(r=>r.date===t.date)&&t.type==='sold').reduce((a,t)=>a+t.income,0);
     return{hsdL:h,msL:m,gross,exp,net:gross-exp+testInc};
   }
@@ -2497,7 +2500,7 @@ function renderOwnerProfit(){
     const hsdSale=recs.reduce((a,r)=>a+(r.hsdNet||0),0);
     const msSale=recs.reduce((a,r)=>a+(r.msNet||0),0);
     const gross=hsdSale*HSD_MARGIN+msSale*MS_MARGIN+recs.reduce((a,r)=>a+(r.mobilTotal||0),0);
-    const exp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+    const exp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0)+(r.otherExp||0),0);
     const adv=recs.reduce((a,r)=>a+(r.advTotal||0),0);
     const fuelSaleAmt=recs.reduce((a,r)=>a+(r.fuelTotal||0),0);
     const testingSoldIncome=testingData.filter(t=>recs.some(r=>r.date===t.date)&&t.type==='sold').reduce((a,t)=>a+t.income,0);
@@ -2611,7 +2614,7 @@ function profitOfRange(recs){
   const hsdSale=recs.reduce((a,r)=>a+(r.hsdNet||0),0);
   const msSale=recs.reduce((a,r)=>a+(r.msNet||0),0);
   const gross=hsdSale*HSD_MARGIN+msSale*MS_MARGIN+recs.reduce((a,r)=>a+(r.mobilTotal||0),0);
-  const exp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+  const exp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0)+(r.otherExp||0),0);
   const testIncome=testingData.filter(t=>recs.some(r=>r.date===t.date)&&t.type==='sold').reduce((a,t)=>a+t.income,0);
   return{hsdL:hsdSale,msL:msSale,gross,exp,net:gross-exp+testIncome,testIncome};
 }
@@ -2719,7 +2722,7 @@ function growthCard(label,val,pct){
 
 function renderMiniChart(){
   // Return canvas placeholders — charts rendered after DOM insertion
-  const monthMap={};cloudData.records.forEach(r=>{const mk=r.date.slice(0,7);if(!monthMap[mk])monthMap[mk]={profit:0,hsd:0,ms:0,fuel:0,exp:0};monthMap[mk].profit+=(r.netProfit||0);monthMap[mk].hsd+=(r.hsdNet||0);monthMap[mk].ms+=(r.msNet||0);monthMap[mk].fuel+=(r.fuelTotal||0);monthMap[mk].exp+=(r.pumpExpTotal||0)+(r.tanker||0);});
+  const monthMap={};cloudData.records.forEach(r=>{const mk=r.date.slice(0,7);if(!monthMap[mk])monthMap[mk]={profit:0,hsd:0,ms:0,fuel:0,exp:0};monthMap[mk].profit+=(r.netProfit||0);monthMap[mk].hsd+=(r.hsdNet||0);monthMap[mk].ms+=(r.msNet||0);monthMap[mk].fuel+=(r.fuelTotal||0);monthMap[mk].exp+=(r.pumpExpTotal||0)+(r.tanker||0)+(r.otherExp||0);});
   const entries=Object.entries(monthMap).sort(([a],[b])=>a.localeCompare(b)).slice(-6);
   if(!entries.length)return'<div style="color:var(--ink-light);font-size:12px;padding:8px">Not enough data for charts</div>';
   const labels=JSON.stringify(entries.map(([mk])=>mk.slice(5)+'/'+mk.slice(0,4)));
@@ -3174,6 +3177,7 @@ function showHistDetail(i){
       ${(d.tanker||0)?`<div class="summary-row"><span class="summary-lbl">Tanker${d.tankerName?' — '+d.tankerName:''}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.tanker)}</span></div>`:''}
       ${(d.acctTr||0)?`<div class="summary-row"><span class="summary-lbl">Account Transfer</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.acctTr)}</span></div>`:''}
       ${(d.hoBank||0)?`<div class="summary-row"><span class="summary-lbl">HO / Bank Deposit</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.hoBank)}</span></div>`:''}
+      ${(d.otherExp||0)?`<div class="summary-row"><span class="summary-lbl">Other Expense${d.otherExpName?' — '+d.otherExpName:''}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(d.otherExp)}</span></div>`:''}
       ${(d.advItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Advance — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
       ${(d.creditSaleItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Credit Sale — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
       ${(d.pumpExpItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Expense — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
@@ -3236,8 +3240,47 @@ async function askQueryMgr(){
   const q=document.getElementById('nlQueryMgr').value.trim();if(!q)return;
   const btn=document.getElementById('askBtnMgr');btn.disabled=true;btn.textContent='…';
   addMgrBubble('user',q);document.getElementById('nlQueryMgr').value='';
-  // Manager version of local answer — no profit data
-  addMgrBubble('ai',mgrLocalAnswer(q));
+  const today=new Date().toISOString().slice(0,10);
+  const ms2=new Date();ms2.setDate(1);const mStart=ms2.toISOString().slice(0,10);
+  // Manager data context — operational only, NO profit/margin figures
+  let data=`Today:${today}  MonthStart:${mStart}\nNozzles — HSD:${NOZZLES_HSD.join(',')}  MS:${NOZZLES_MS.join(',')}\n\nDAILY RECORDS (most recent first):\n`;
+  cloudData.records.slice(0,90).forEach(r=>{
+    data+=`DATE:${r.date} Fuel:₹${(r.fuelTotal||0).toFixed(0)} HSD:${(r.hsdNet||0).toFixed(1)}L@₹${r.hsdRsp||0} MS:${(r.msNet||0).toFixed(1)}L@₹${r.msRsp||0} Paytm:₹${(r.paytmTotal||0).toFixed(0)} OTP:₹${(r.otp||0).toFixed(0)} HOBank:₹${(r.hoBank||0).toFixed(0)} Cash:₹${(r.finalCash||0).toFixed(0)}\n`;
+    if((r.pumpExpItems||[]).length)data+=`   Exp: ${r.pumpExpItems.map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
+    if(r.otherExp)data+=`   OtherExp: ${r.otherExpName||'misc'}=₹${r.otherExp}\n`;
+    if((r.advItems||[]).length)data+=`   Adv: ${r.advItems.map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
+  });
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-5',max_tokens:900,
+        system:`You are the MF Assistant — the operational helper for the manager of Mahakaleshwar Fuels (an IOCL petrol pump).
+
+Your job: answer the manager's questions about daily sales, nozzle readings, cash, expenses, advances, Paytm, OTP, and HO/Bank deposits using ONLY the data below.
+
+IMPORTANT: You are the MANAGER's assistant. NEVER discuss or reveal profit, margins, or per-litre commission — that information is owner-only and is not in your data. If asked about profit, politely say profit figures are visible to the owner only.
+
+RULES:
+- Use exact numbers from the data. If a value isn't present, say so. Never invent figures.
+- Use ₹ for money and "L" for litres.
+- Understand Hinglish (kal=yesterday, aaj=today, kitna=how much, kharcha=expense, sabka=everyone's, poora=all).
+- Keep answers short and scannable: headline number first, then a brief day-wise or person-wise breakdown if useful. Plain text only — no markdown, no asterisks, no tables. Line breaks and simple "•" bullets at most.
+
+DATA:
+${data}`,
+        messages:[{role:'user',content:q}]
+      })
+    });
+    if(!resp.ok)throw new Error('api');
+    const res=await resp.json();
+    const txt=(res.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+    addMgrBubble('ai',txt||mgrLocalAnswer(q));
+  }catch(e){
+    // Falls back to local answer — works fully offline
+    addMgrBubble('ai',mgrLocalAnswer(q));
+  }
   btn.disabled=false;btn.textContent='Ask →';
 }
 
@@ -3309,9 +3352,9 @@ function mgrLocalAnswer(q){
     // Show clean day-wise total, not every line item
     const useAll=q.includes('all time')||q.includes('all')||q.includes('poora');
     const recs=useAll?[...allRecs].sort((a,b)=>b.date.localeCompare(a.date)):monthRecs.sort((a,b)=>b.date.localeCompare(a.date));
-    const total=recs.reduce((a,r)=>a+(r.pumpExpTotal||0),0);
+    const total=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.otherExp||0),0);
     const label=useAll?`All-time (${recs.length} days)`:`This month (${recs.length} days)`;
-    const dayLines=recs.filter(r=>(r.pumpExpTotal||0)>0).map(r=>`${r.date}: ₹${fmt(r.pumpExpTotal)}`).join('\n');
+    const dayLines=recs.filter(r=>((r.pumpExpTotal||0)+(r.otherExp||0))>0).map(r=>`${r.date}: ₹${fmt((r.pumpExpTotal||0)+(r.otherExp||0))}`).join("\n");
     return`🧾 Expenses — ${label}:\nTotal: ₹${fmt(total)}\n\nDay-wise:\n${dayLines||'No expenses recorded'}`;
   }
   // ── ADVANCE — checked BEFORE summary/total
@@ -3357,7 +3400,7 @@ function mgrLocalAnswer(q){
     const ms=monthRecs.reduce((a,r)=>a+(r.msNet||0),0);
     const fuel=monthRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
     const cash=monthRecs.reduce((a,r)=>a+(r.finalCash||0),0);
-    const exp=monthRecs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+    const exp=monthRecs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0)+(r.otherExp||0),0);
     const adv=monthRecs.reduce((a,r)=>a+(r.advTotal||0),0);
     return`This month (${monthRecs.length} days):\nHSD: ${hsd.toFixed(1)}L | MS: ${ms.toFixed(1)}L\nFuel: ₹${fmt(fuel)}\nCash: ₹${fmt(cash)}\nExpenses: ₹${fmt(exp)}\nAdvances: ₹${fmt(adv)}`;
   }
@@ -3404,25 +3447,48 @@ async function askQuery(){
   addChatBubble('user',q);document.getElementById('nlQuery').value='';
   const today=new Date().toISOString().slice(0,10);
   const ms2=new Date();ms2.setDate(1);const mStart=ms2.toISOString().slice(0,10);
-  let data=`Today:${today} MonthStart:${mStart} HSD_margin:₹${HSD_MARGIN}/L MS_margin:₹${MS_MARGIN}/L\n\nRECORDS:\n`;
-  cloudData.records.slice(0,60).forEach(r=>{
-    data+=`DATE:${r.date} Fuel:₹${(r.fuelTotal||0).toFixed(0)} Cash:₹${(r.finalCash||0).toFixed(0)} HSD:${(r.hsdNet||0).toFixed(1)}L MS:${(r.msNet||0).toFixed(1)}L Profit:₹${(r.netProfit||0).toFixed(0)}\n`;
-    if((r.pumpExpItems||[]).length)data+=` Exp:${r.pumpExpItems.map(x=>`${x.name}=₹${x.amt}`).join(',')}\n`;
-    if((r.advItems||[]).length)data+=` Adv:${r.advItems.map(x=>`${x.name}=₹${x.amt}`).join(',')}\n`;
+  // Build a rich, compact data context for Bella
+  let data=`Today:${today}  MonthStart:${mStart}\nHSD margin:₹${HSD_MARGIN}/L   MS margin:₹${MS_MARGIN}/L\nNozzles — HSD:${NOZZLES_HSD.join(',')}  MS:${NOZZLES_MS.join(',')}\n\nDAILY RECORDS (most recent first):\n`;
+  cloudData.records.slice(0,90).forEach(r=>{
+    data+=`DATE:${r.date} Fuel:₹${(r.fuelTotal||0).toFixed(0)} HSD:${(r.hsdNet||0).toFixed(1)}L@₹${r.hsdRsp||0} MS:${(r.msNet||0).toFixed(1)}L@₹${r.msRsp||0} Paytm:₹${(r.paytmTotal||0).toFixed(0)} OTP:₹${(r.otp||0).toFixed(0)} HOBank:₹${(r.hoBank||0).toFixed(0)} Cash:₹${(r.finalCash||0).toFixed(0)} Profit:₹${(r.netProfit||0).toFixed(0)}\n`;
+    if((r.pumpExpItems||[]).length)data+=`   Exp: ${r.pumpExpItems.map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
+    if(r.otherExp)data+=`   OtherExp: ${r.otherExpName||'misc'}=₹${r.otherExp}\n`;
+    if((r.advItems||[]).length)data+=`   Adv: ${r.advItems.map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
+    if((r.creditSaleItems||[]).length)data+=`   CreditSale: ${r.creditSaleItems.map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
   });
+  // Outstanding credit balances
+  const partyMap={};(creditData||[]).forEach(t=>{partyMap[t.party]=partyMap[t.party]||{c:0,p:0};if(t.type==='credit')partyMap[t.party].c+=t.amt;else partyMap[t.party].p+=t.amt;});
+  const outstanding=Object.entries(partyMap).filter(([,v])=>v.c-v.p>0.5);
+  if(outstanding.length)data+=`\nOUTSTANDING CREDIT:\n`+outstanding.map(([n,v])=>`  ${n}: due ₹${(v.c-v.p).toFixed(0)}`).join('\n')+'\n';
   try{
     const resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',max_tokens:1000,
-        system:`You are Bella, a smart assistant for Mahakaleshwar Fuels petrol pump. Answer with exact numbers from data. Use ₹. Plain text only.\n\n${data}`,
+        model:'claude-sonnet-4-5',max_tokens:1000,
+        system:`You are Bella, the smart business assistant for Mahakaleshwar Fuels — an Indian Oil (IOCL) petrol pump owned by Aditya.
+
+Your job: answer the owner's questions about sales, cash, profit, expenses, advances, and credit using ONLY the data below. Be precise.
+
+RULES:
+- Always use exact numbers from the data. Never invent or estimate beyond what's given. If a value isn't in the data, say so plainly.
+- Use ₹ for money, and "L" for litres. Indian number formatting where natural.
+- "Profit" = the netProfit figure already computed per day (HSD litres×₹${HSD_MARGIN} + MS litres×₹${MS_MARGIN} + mobil − pump expenses − tanker − advances − other expense). Don't recompute it differently.
+- "Final cash" / "BF" = the finalCash figure for that day.
+- When asked about a person, sum across their entries and show a short day-wise breakdown.
+- Understand Hinglish too (kal=yesterday, aaj=today, kitna=how much, kharcha=expense, munafa=profit, sabka=everyone's, poora=all/total).
+- Keep answers tight and scannable: a headline number first, then a short breakdown if useful. Plain text only — no markdown symbols, no tables, no asterisks. Use line breaks and simple "•" bullets at most.
+- If the question is ambiguous, answer the most likely interpretation and note the assumption in one short line.
+
+DATA:
+${data}`,
         messages:[{role:'user',content:q}]
       })
     });
     if(!resp.ok)throw new Error('api');
     const res=await resp.json();
-    addChatBubble('ai',res.content?.[0]?.text||bellaLocalAnswer(q));
+    const txt=(res.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+    addChatBubble('ai',txt||bellaLocalAnswer(q));
   }catch(e){
     // Bella answers from local data — no connection needed
     addChatBubble('ai',bellaLocalAnswer(q));
@@ -3536,9 +3602,9 @@ function bellaLocalAnswer(q){
     }
     const useAll=q.includes('all time')||q.includes('all')||q.includes('poora');
     const recs=useAll?[...allRecs].sort((a,b)=>b.date.localeCompare(a.date)):monthRecs.sort((a,b)=>b.date.localeCompare(a.date));
-    const total=recs.reduce((a,r)=>a+(r.pumpExpTotal||0),0);
+    const total=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.otherExp||0),0);
     const label=useAll?`All-time (${recs.length} days)`:`This month (${recs.length} days)`;
-    const dayLines=recs.filter(r=>(r.pumpExpTotal||0)>0).map(r=>`${r.date}: ₹${fmt(r.pumpExpTotal)}`).join('\n');
+    const dayLines=recs.filter(r=>((r.pumpExpTotal||0)+(r.otherExp||0))>0).map(r=>`${r.date}: ₹${fmt((r.pumpExpTotal||0)+(r.otherExp||0))}`).join("\n");
     return`🧾 Expenses — ${label}:\nTotal: ₹${fmt(total)}\n\nDay-wise:\n${dayLines||'No expenses recorded'}`;
   }
 
@@ -3649,7 +3715,7 @@ function bellaLocalAnswer(q){
     const ms=monthRecs.reduce((a,r)=>a+(r.msNet||0),0);
     const fuel=monthRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
     const cash=monthRecs.reduce((a,r)=>a+(r.finalCash||0),0);
-    const exp=monthRecs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+    const exp=monthRecs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0)+(r.otherExp||0),0);
     const adv=monthRecs.reduce((a,r)=>a+(r.advTotal||0),0);
     const profit=monthRecs.reduce((a,r)=>a+(r.netProfit||0),0);
     return`This month summary (${monthRecs.length} days):\nHSD Sold: ${hsd.toFixed(1)} L\nMS Sold: ${ms.toFixed(1)} L\nFuel Sales: ₹${fmt(fuel)}\nTotal Cash: ₹${fmt(cash)}\nExpenses: ₹${fmt(exp)}\nAdvances: ₹${fmt(adv)}\nEst. Profit: ₹${fmt(profit)}`;
@@ -3662,7 +3728,7 @@ function bellaLocalAnswer(q){
   const mMS=mR.reduce((a,r)=>a+(r.msNet||0),0);
   const mFuel=mR.reduce((a,r)=>a+(r.fuelTotal||0),0);
   const mProfit=mR.reduce((a,r)=>a+(r.netProfit||0),0);
-  const mExp=mR.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+  const mExp=mR.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0)+(r.otherExp||0),0);
   const mAdv=mR.reduce((a,r)=>a+(r.advTotal||0),0);
   const mCS=mR.reduce((a,r)=>a+(r.csTotal||0),0);
   const lastRec=allRecs[0];
@@ -3748,7 +3814,7 @@ function buildSalesRecords(f,t2){
   const totMS=recs.reduce((a,r)=>a+(r.msNet||0),0);
   const totFuel=recs.reduce((a,r)=>a+(r.fuelTotal||0),0);
   const totCash=recs.reduce((a,r)=>a+(r.finalCash||0),0);
-  const totExp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0),0);
+  const totExp=recs.reduce((a,r)=>a+(r.pumpExpTotal||0)+(r.tanker||0)+(r.otherExp||0),0);
   const totAdv=recs.reduce((a,r)=>a+(r.advTotal||0),0);
   const totMobil=recs.reduce((a,r)=>a+(r.mobilTotal||0),0);
   const totProfit=recs.reduce((a,r)=>a+(r.netProfit||0),0);
@@ -4293,7 +4359,7 @@ async function preloadHistoricalData(){
   const c=cloudData.cumulative;
   toAdd.forEach(r=>{
     c.totalAdv=(c.totalAdv||0)+(r.advTotal||0);
-    c.totalExp=(c.totalExp||0)+(r.pumpExpTotal||0)+(r.tanker||0);
+    c.totalExp=(c.totalExp||0)+(r.pumpExpTotal||0)+(r.tanker||0)+(r.otherExp||0);
     c.totalMobil=(c.totalMobil||0)+(r.mobilTotal||0);
     c.totalCS=(c.totalCS||0)+(r.csTotal||0);
   });
@@ -4406,6 +4472,8 @@ function renderEditModal(d){
             <div class="field"><div class="lbl">Tanker Name</div><input type="text" id="em_tankerName" value="${d.tankerName||''}" style="margin-top:4px"></div>
             <div class="field"><div class="lbl">Acct Transfer (₹)</div><input type="number" step="0.01" id="em_acctTr" value="${d.acctTr||0}" style="margin-top:4px"></div>
             <div class="field"><div class="lbl">HO / Bank (₹)</div><input type="number" step="0.01" id="em_hoBank" value="${d.hoBank||0}" style="margin-top:4px"></div>
+            <div class="field"><div class="lbl">Other Expense (₹)</div><input type="number" step="0.01" id="em_otherExp" value="${d.otherExp||0}" style="margin-top:4px"></div>
+            <div class="field"><div class="lbl">Other Exp Note</div><input type="text" id="em_otherExpName" value="${d.otherExpName||''}" style="margin-top:4px"></div>
             <div class="field"><div class="lbl">Balance Forward (₹)</div><input type="number" step="0.01" id="em_bf" value="${d.bf||0}" style="margin-top:4px"></div>
           </div>
         </div>
@@ -4515,6 +4583,8 @@ function syncEditInputsToTarget(){
   editTarget.tankerName=gs('em_tankerName');
   editTarget.acctTr=gv('em_acctTr');
   editTarget.hoBank=gv('em_hoBank');
+  editTarget.otherExp=gv('em_otherExp');
+  editTarget.otherExpName=gs('em_otherExpName');
   editTarget.bf=gv('em_bf');
   // Nozzle closings — always update even if 0
   NOZZLES_HSD.forEach(n=>{const el=document.getElementById('em_cl_'+n);if(el&&el.value!=='')editTarget['cl_'+n]=parseFloat(el.value)||0;});
@@ -4555,13 +4625,14 @@ async function saveEditRecord(){
 
   // Recalculate totals
   d.grossTotal=d.fuelTotal+(d.bf||0)+(d.mobilTotal||0)+(d.depositTotal||0);
-  d.totalDeductions=(d.paytmTotal||0)+(d.otp||0)+(d.tanker||0)+(d.acctTr||0)+(d.hoBank||0)+d.advTotal+d.csTotal+d.pumpExpTotal;
+  d.totalDeductions=(d.paytmTotal||0)+(d.otp||0)+(d.tanker||0)+(d.acctTr||0)+(d.hoBank||0)+(d.otherExp||0)+d.advTotal+d.csTotal+d.pumpExpTotal;
   d.finalCash=d.grossTotal-d.totalDeductions;
 
-  // Estimate profit (basic: fuelTotal - tanker - expenses + mobil)
-  const hsdCost=d.hsdNet*(d.hsdCostPrice||0);
-  const msCost=d.msNet*(d.msCostPrice||0);
-  d.netProfit=d.fuelTotal-hsdCost-msCost+(d.mobilTotal||0)-d.pumpExpTotal;
+  // Estimate profit — use the SAME margin logic as the main daily-sales flow (exact)
+  d.hsdMarginAmt=d.hsdNet*HSD_MARGIN;
+  d.msMarginAmt=d.msNet*MS_MARGIN;
+  d.grossProfit=d.hsdMarginAmt+d.msMarginAmt+(d.mobilTotal||0);
+  d.netProfit=d.grossProfit-d.pumpExpTotal-(d.tanker||0)-d.advTotal-(d.otherExp||0);
 
   // Update record in cloudData
   const idx=cloudData.records.findIndex(r=>r.date===d.date);
