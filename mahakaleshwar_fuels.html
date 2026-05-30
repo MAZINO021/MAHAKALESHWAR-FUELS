@@ -1603,44 +1603,49 @@ async function addRecv(){
 async function removeRecv(i){recvData.splice(i,1);await cloudSet(STORE_KEY_RECV,recvData);renderReceived();}
 
 // ── MODULE 6: CREDIT SALES ────────────────────────────────────────────────────
+// Canonical credit-party computation. Pulls credits from daily-sales records and
+// payments from creditData, matching party names case-insensitively + trimmed.
+// Returns { key: {display, credit, paid, txns:[]} }.
+function computeCreditParties(){
+  const parties={};
+  const keyOf=n=>(n||'').trim().toLowerCase().replace(/\s+/g,' ');
+  function getParty(name){
+    const k=keyOf(name);
+    if(!parties[k])parties[k]={display:(name||'').trim()||'(unnamed)',credit:0,paid:0,txns:[]};
+    return parties[k];
+  }
+  cloudData.records.forEach(r=>{
+    (r.creditSaleItems||[]).forEach(item=>{
+      const p=getParty(item.name);
+      p.credit+=item.amt;
+      p.txns.push({date:r.date,type:'credit',amt:item.amt,note:'Daily Sales',auto:true});
+    });
+    if((r.csTotal||0)>0&&!(r.creditSaleItems||[]).length){
+      const p=getParty('Credit Sale');
+      p.credit+=r.csTotal;
+      p.txns.push({date:r.date,type:'credit',amt:r.csTotal,note:'Daily Sales',auto:true});
+    }
+  });
+  creditData.forEach(t=>{
+    if(t.type==='payment'){
+      const p=getParty(t.party);
+      p.paid+=t.amt;
+      p.txns.push({date:t.date,type:'payment',amt:t.amt,note:t.note||'',auto:false});
+    }
+    if(t.type==='credit'&&!cloudData.records.some(r=>(r.creditSaleItems||[]).some(ci=>keyOf(ci.name)===keyOf(t.party)&&ci.amt===t.amt&&r.date===t.date))){
+      const p=getParty(t.party);
+      p.credit+=t.amt;
+      p.txns.push({date:t.date,type:'credit',amt:t.amt,note:t.note||'Manual',auto:false});
+    }
+  });
+  return parties;
+}
+
 function renderCreditSales(){
   document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="backToModules()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
 
-  // ── AUTO-BUILD credit ledger from Daily Sales records
-  // Credit entries come FROM cloudData.records (daily sales credit items)
-  // Payment entries come FROM creditData (manually entered payments)
-  const parties={};
-
-  // Step 1: Pull all credit sales from daily sales records
-  cloudData.records.forEach(r=>{
-    (r.creditSaleItems||[]).forEach(item=>{
-      if(!parties[item.name])parties[item.name]={credit:0,paid:0,txns:[]};
-      parties[item.name].credit+=item.amt;
-      parties[item.name].txns.push({date:r.date,type:'credit',amt:item.amt,note:'Daily Sales',auto:true});
-    });
-    // Also handle old-style csTotal with single party name
-    if((r.csTotal||0)>0&&!(r.creditSaleItems||[]).length){
-      const pname='Credit Sale';
-      if(!parties[pname])parties[pname]={credit:0,paid:0,txns:[]};
-      parties[pname].credit+=r.csTotal;
-      parties[pname].txns.push({date:r.date,type:'credit',amt:r.csTotal,note:'Daily Sales',auto:true});
-    }
-  });
-
-  // Step 2: Add manual payment entries from creditData
-  creditData.forEach(t=>{
-    if(t.type==='payment'){
-      if(!parties[t.party])parties[t.party]={credit:0,paid:0,txns:[]};
-      parties[t.party].paid+=t.amt;
-      parties[t.party].txns.push({date:t.date,type:'payment',amt:t.amt,note:t.note||'',auto:false});
-    }
-    // Also add any manual credit entries (legacy)
-    if(t.type==='credit'&&!cloudData.records.some(r=>(r.creditSaleItems||[]).some(ci=>ci.name===t.party&&ci.amt===t.amt&&r.date===t.date))){
-      if(!parties[t.party])parties[t.party]={credit:0,paid:0,txns:[]};
-      parties[t.party].credit+=t.amt;
-      parties[t.party].txns.push({date:t.date,type:'credit',amt:t.amt,note:t.note||'Manual',auto:false});
-    }
-  });
+  // Canonical party computation (case-insensitive matching so payments subtract)
+  const parties=computeCreditParties();
 
   const totalDue=Object.values(parties).reduce((a,p)=>a+Math.max(0,p.credit-p.paid),0);
   const totalCredit=Object.values(parties).reduce((a,p)=>a+p.credit,0);
@@ -1648,9 +1653,10 @@ function renderCreditSales(){
 
   const partyRows=Object.entries(parties).sort(([,a],[,b])=>(b.credit-b.paid)-(a.credit-a.paid)).map(([name,p])=>{
     const bal=p.credit-p.paid;
-    return`<div onclick="showCreditParty('${name.replace(/'/g,"\\'")}',${JSON.stringify(p).replace(/'/g,"\\'")})" class="hist-item" style="cursor:pointer">
+    const dn=p.display;
+    return`<div onclick="showCreditParty('${dn.replace(/'/g,"\\'")}',${JSON.stringify(p).replace(/'/g,"\\'")})" class="hist-item" style="cursor:pointer">
       <div style="flex:1">
-        <div class="hist-date" style="font-size:14px">${name}</div>
+        <div class="hist-date" style="font-size:14px">${dn}</div>
         <div class="hist-sub">
           Credit: ₹${fmt(p.credit)} &nbsp;|&nbsp; Paid: ₹${fmt(p.paid)}
           &nbsp;|&nbsp; <span style="font-size:10px;font-weight:700;color:var(--ink-light)">${p.txns.filter(t=>t.auto).length} from sales · ${p.txns.filter(t=>!t.auto&&t.type==='payment').length} payments</span>
@@ -1693,7 +1699,7 @@ function renderCreditSales(){
       <div class="field">
         <div class="lbl">Party Name</div>
         <input type="text" id="cr_party" placeholder="Select party" list="partyAutoList">
-        <datalist id="partyAutoList">${Object.keys(parties).map(p=>`<option value="${p}">`).join('')}</datalist>
+        <datalist id="partyAutoList">${Object.values(parties).map(p=>`<option value="${p.display}">`).join('')}</datalist>
       </div>
       <div class="field">
         <div class="lbl">Amount Paid (₹)</div>
@@ -1736,18 +1742,20 @@ async function addPaymentTxn(){
 async function addCreditTxn(){addPaymentTxn();}
 
 function showCreditParty(name,pObj){
-  // Build transaction list from both sources
+  // Build transaction list from both sources — match name case-insensitively + trimmed
+  const norm=s=>(s||'').trim().toLowerCase().replace(/\s+/g,' ');
+  const key=norm(name);
   const autoTxns=[];
   cloudData.records.forEach(r=>{
     (r.creditSaleItems||[]).forEach(item=>{
-      if(item.name===name)autoTxns.push({date:r.date,type:'credit',amt:item.amt,note:'From Daily Sales',auto:true});
+      if(norm(item.name)===key)autoTxns.push({date:r.date,type:'credit',amt:item.amt,note:'From Daily Sales',auto:true});
     });
-    if((r.csTotal||0)>0&&!(r.creditSaleItems||[]).length&&name==='Credit Sale'){
+    if((r.csTotal||0)>0&&!(r.creditSaleItems||[]).length&&key==='credit sale'){
       autoTxns.push({date:r.date,type:'credit',amt:r.csTotal,note:'From Daily Sales',auto:true});
     }
   });
-  const manualTxns=creditData.filter(t=>t.party===name);
-  const allTxns=[...autoTxns,...manualTxns].sort((a,b)=>a.date.localeCompare(b.date));
+  const manualTxns=creditData.filter(t=>norm(t.party)===key);
+  const allTxns=[...autoTxns,...manualTxns].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 
   let running=0;
   const rows=allTxns.map(t=>{
@@ -1871,11 +1879,10 @@ function renderOwnerReport(){
       if(!cloudData.records.find(r=>r.date===yStr)&&new Date().getHours()>10){
         alerts.push(`⚠️ No sales record for yesterday (${yStr})`);
       }
-      // Outstanding credit
-      const partyMap={};
-      creditData.forEach(t=>{if(!partyMap[t.party])partyMap[t.party]={c:0,p:0};if(t.type==='credit')partyMap[t.party].c+=t.amt;else partyMap[t.party].p+=t.amt;});
-      const outstanding=Object.entries(partyMap).filter(([,v])=>v.c-v.p>0);
-      const totalOut=outstanding.reduce((a,[,v])=>a+(v.c-v.p),0);
+      // Outstanding credit — use canonical computation (matches Credit tab)
+      const cp=computeCreditParties();
+      const outstanding=Object.values(cp).filter(v=>v.credit-v.paid>0);
+      const totalOut=outstanding.reduce((a,v)=>a+(v.credit-v.paid),0);
       if(totalOut>0)alerts.push(`💳 Outstanding credit: ₹${Number(totalOut).toLocaleString('en-IN')} from ${outstanding.length} parties`);
       // Inspection variance
       const lastInsp=Object.entries(inspectData).sort((a,b)=>b[0].localeCompare(a[0]))[0];
@@ -2530,9 +2537,10 @@ function renderOwnerPortfolioInto(target){
 function renderOwnerCreditInto(target){
   const el=document.getElementById(target);if(!el)return;
   const today=todayKey0();
-  const parties={};creditData.forEach(t=>{if(!parties[t.party])parties[t.party]={total:0,paid:0};if(t.type==='credit')parties[t.party].total+=t.amt;else parties[t.party].paid+=t.amt;});
+  const cp=computeCreditParties();
+  const parties={};Object.values(cp).forEach(p=>{parties[p.display]={total:p.credit,paid:p.paid};});
   const totalDue=Object.values(parties).reduce((a,p)=>a+Math.max(0,p.total-p.paid),0);
-  const rows=Object.entries(parties).map(([n,p])=>`<tr style="cursor:pointer" onclick="showOwnerCreditDetailIn('${n.replace(/'/g,"\\'")}','ownerSubTabContent')"><td style="font-weight:600">${n}</td><td class="right">₹${fmt(p.total)}</td><td class="right" style="color:var(--green)">₹${fmt(p.paid)}</td><td class="right" style="color:${p.total-p.paid>0?'var(--ioc-red)':'var(--green)'};font-weight:700">₹${fmt(p.total-p.paid)}</td></tr>`).join('');
+  const rows=Object.entries(parties).sort(([,a],[,b])=>(b.total-b.paid)-(a.total-a.paid)).map(([n,p])=>`<tr style="cursor:pointer" onclick="showOwnerCreditDetailIn('${n.replace(/'/g,"\\'")}','ownerSubTabContent')"><td style="font-weight:600">${n}</td><td class="right">₹${fmt(p.total)}</td><td class="right" style="color:var(--green)">₹${fmt(p.paid)}</td><td class="right" style="color:${p.total-p.paid>0?'var(--ioc-red)':'var(--green)'};font-weight:700">₹${fmt(p.total-p.paid)}</td></tr>`).join('');
   el.innerHTML=`
     <div class="card"><div class="card-title">📝 Credit Outstanding — ₹${fmt(totalDue)}</div>
       <div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Party</th><th>Credit</th><th>Paid</th><th>Balance</th></tr></thead>
@@ -2541,14 +2549,17 @@ function renderOwnerCreditInto(target){
 }
 
 function showOwnerCreditDetailIn(name){
-  const txns=creditData.filter(t=>t.party===name).sort((a,b)=>a.date.localeCompare(b.date));
+  const norm=s=>(s||'').trim().toLowerCase().replace(/\s+/g,' ');
+  const cp=computeCreditParties();
+  const party=cp[norm(name)]||{credit:0,paid:0,txns:[]};
+  const txns=[...party.txns].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   let run=0;
-  const total=txns.filter(t=>t.type==='credit').reduce((a,t)=>a+t.amt,0);
-  const paid=txns.filter(t=>t.type==='payment').reduce((a,t)=>a+t.amt,0);
+  const total=party.credit;
+  const paid=party.paid;
   const balance=total-paid;
   const rows=txns.map(t=>{
     if(t.type==='credit')run+=t.amt;else run-=t.amt;
-    const src=t.source==='daily_sales'?'<span style="font-size:9px;padding:2px 5px;background:var(--ioc-navy-light);color:var(--ioc-navy);border-radius:3px;font-weight:600">AUTO</span>':'<span style="font-size:9px;padding:2px 5px;background:#f0fff4;color:var(--green);border-radius:3px;font-weight:600">MANUAL</span>';
+    const src=t.auto?'<span style="font-size:9px;padding:2px 5px;background:var(--ioc-navy-light);color:var(--ioc-navy);border-radius:3px;font-weight:600">AUTO</span>':'<span style="font-size:9px;padding:2px 5px;background:#f0fff4;color:var(--green);border-radius:3px;font-weight:600">MANUAL</span>';
     return `<tr>
       <td>${t.date}</td>
       <td><b style="color:${t.type==='credit'?'var(--ioc-red)':'var(--green)'}">${t.type==='credit'?'Credit':'Payment'}</b></td>
@@ -2938,9 +2949,9 @@ function showPortfolioResult(hsdRsp,msRsp){
   const cashTotal=(p.cash||0)+(p.bank||0)+(p.iocl||0)+(p.paytm||0);
   const grandTotal=stockTotal+cashTotal;
 
-  // Credit outstanding (debt)
-  const parties={};creditData.forEach(t=>{if(!parties[t.party])parties[t.party]={total:0,paid:0};if(t.type==='credit')parties[t.party].total+=t.amt;else parties[t.party].paid+=t.amt;});
-  const creditDue=Object.values(parties).reduce((a,p2)=>a+Math.max(0,p2.total-p2.paid),0);
+  // Credit outstanding (debt) — canonical computation (matches Credit tab)
+  const _cp=computeCreditParties();
+  const creditDue=Object.values(_cp).reduce((a,p2)=>a+Math.max(0,p2.credit-p2.paid),0);
   const netWorth=grandTotal+creditDue; // credit due is an asset
 
   // Growth % vs previous month
@@ -3636,10 +3647,10 @@ async function askQuery(){
     if((r.advItems||[]).length)data+=`   Adv: ${r.advItems.map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
     if((r.creditSaleItems||[]).length)data+=`   CreditSale: ${r.creditSaleItems.map(x=>`${x.name}=₹${x.amt}`).join(', ')}\n`;
   });
-  // Outstanding credit balances
-  const partyMap={};(creditData||[]).forEach(t=>{partyMap[t.party]=partyMap[t.party]||{c:0,p:0};if(t.type==='credit')partyMap[t.party].c+=t.amt;else partyMap[t.party].p+=t.amt;});
-  const outstanding=Object.entries(partyMap).filter(([,v])=>v.c-v.p>0.5);
-  if(outstanding.length)data+=`\nOUTSTANDING CREDIT:\n`+outstanding.map(([n,v])=>`  ${n}: due ₹${(v.c-v.p).toFixed(0)}`).join('\n')+'\n';
+  // Outstanding credit balances — canonical computation
+  const _cp=computeCreditParties();
+  const outstanding=Object.values(_cp).filter(v=>v.credit-v.paid>0.5).sort((a,b)=>(b.credit-b.paid)-(a.credit-a.paid));
+  if(outstanding.length)data+=`\nOUTSTANDING CREDIT:\n`+outstanding.map(v=>`  ${v.display}: due ₹${(v.credit-v.paid).toFixed(0)}`).join('\n')+'\n';
   try{
     const resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
@@ -3866,28 +3877,24 @@ function bellaLocalAnswer(q){
 
   // Credit
   if(q.includes('credit')){
-    const allParties=[...new Set(creditData.map(t=>t.party.toLowerCase()))];
-    const mentionedParty=allParties.find(p=>q.includes(p.toLowerCase())||p.toLowerCase().split(' ').some(part=>part.length>2&&q.includes(part)));
-    if(mentionedParty){
-      const txns=creditData.filter(t=>t.party.toLowerCase()===mentionedParty);
-      const total=txns.filter(t=>t.type==='credit').reduce((a,t)=>a+t.amt,0);
-      const paid=txns.filter(t=>t.type==='payment').reduce((a,t)=>a+t.amt,0);
-      const balance=total-paid;
-      const history=txns.slice(-5).map(t=>`${t.date} ${t.type==='credit'?'Credit':'Paid'}: ₹${fmt(t.amt)}`).join('\n');
-      return`💳 ${txns[0]?.party||mentionedParty.toUpperCase()}:\n\nTotal Credit Given: ₹${fmt(total)}\nTotal Paid Back: ₹${fmt(paid)}\n${balance>0?`⚠️ Balance Due: ₹${fmt(balance)}`:`✅ Fully Paid`}\n\nRecent transactions:\n${history}`;
+    const cp=computeCreditParties();
+    const partyList=Object.values(cp);
+    // Try to match a mentioned party by name
+    const mentioned=partyList.find(p=>{
+      const dn=p.display.toLowerCase();
+      return q.includes(dn)||dn.split(' ').some(part=>part.length>2&&q.includes(part));
+    });
+    if(mentioned){
+      const balance=mentioned.credit-mentioned.paid;
+      const history=[...mentioned.txns].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).slice(-5).map(t=>`${t.date} ${t.type==='credit'?'Credit':'Paid'}: ₹${fmt(t.amt)}`).join('\n');
+      return`💳 ${mentioned.display}:\n\nTotal Credit Given: ₹${fmt(mentioned.credit)}\nTotal Paid Back: ₹${fmt(mentioned.paid)}\n${balance>0?`⚠️ Balance Due: ₹${fmt(balance)}`:`✅ Fully Paid`}\n\nRecent transactions:\n${history}`;
     }
     // Show all outstanding balances
-    const partyMap={};
-    creditData.forEach(t=>{
-      if(!partyMap[t.party])partyMap[t.party]={credit:0,paid:0};
-      if(t.type==='credit')partyMap[t.party].credit+=t.amt;
-      else partyMap[t.party].paid+=t.amt;
-    });
-    const outstanding=Object.entries(partyMap).filter(([,v])=>v.credit-v.paid>0).sort(([,a],[,b])=>(b.credit-b.paid)-(a.credit-a.paid));
-    const totalOut=outstanding.reduce((a,[,v])=>a+(v.credit-v.paid),0);
+    const outstanding=partyList.filter(v=>v.credit-v.paid>0).sort((a,b)=>(b.credit-b.paid)-(a.credit-a.paid));
+    const totalOut=outstanding.reduce((a,v)=>a+(v.credit-v.paid),0);
     if(outstanding.length){
-      const lines=outstanding.map(([n,v])=>`  • ${n}: ₹${fmt(v.credit-v.paid)}`).join('\n');
-      return`💳 Outstanding Credit Balances:\n\nTotal Due: ₹${fmt(totalOut)}\n\n${lines}`;
+      const lines=outstanding.map(v=>`  • ${v.display}: ₹${fmt(v.credit-v.paid)}`).join('\n');
+      return`💳 Outstanding Credit Balances:\n\nTotal Due: ₹${fmt(totalOut)}\nParties: ${outstanding.length}\n\n${lines}`;
     }
     const total=monthRecs.reduce((a,r)=>a+(r.csTotal||0),0);
     return`This month credit sales: ₹${fmt(total)}\nNo outstanding balances.`;
