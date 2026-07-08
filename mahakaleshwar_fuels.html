@@ -429,7 +429,7 @@ const USERS={manager:{id:'Manager_0626',pass:'Manager@2121'},owner:{id:'Aditya_2
 const STORE_KEY='mf_main',STORE_KEY_CUM='mf_cumulative',STORE_KEY_ATT='mf_attendance',
       STORE_KEY_INSPECT='mf_inspection',STORE_KEY_RECV='mf_received',STORE_KEY_CREDIT='mf_credit',
       STORE_KEY_STAFF='mf_staff',STORE_KEY_PORTFOLIO='mf_portfolio',STORE_KEY_TESTING='mf_testing',
-      DEPOSIT_KEY='mf_owner_deposits';
+      DEPOSIT_KEY='mf_owner_deposits',STORE_KEY_TRUCK='mf_trucklog';
 const NOZZLES_HSD=['H1','H2','H3','H4','H5','H6','H7','H8'];
 const NOZZLES_MS=['M1','M2','M3','M4'];
 const DEFAULT_STAFF=['BHOJU YADAV','BRIJESH TIWARI','ASHOK YADAV','MANOJ KUMAR','GULAB YADAV',
@@ -445,13 +445,14 @@ const MANAGER_MODULES=[
   {id:'testing',icon:'🧪',label:'Testing',desc:'Tank / Self-use / Sold'},
   {id:'received',icon:'🚛',label:'Total Received',desc:'MS & HSD stock received'},
   {id:'creditsales',icon:'📝',label:'Credit Sales',desc:'Party-wise credit ledger'},
+  {id:'trucklog',icon:'🚚',label:'Truck Log',desc:'Daily trucks & customer tracking'},
 ];
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let currentUser=null,currentRole=null,selectedRole=null;
 let staffList=[...DEFAULT_STAFF];
 let cloudData={records:[],prevClosing:{},prevBF:0,cumulative:{totalAdv:0,totalExp:0,totalMobil:0,totalDeposit:0,totalCS:0,parties:{},employees:{},expCats:{}}};
-let attData={},inspectData={},recvData=[],creditData=[],testingData=[],portfolioData={months:{}},ownerDeposits=[];
+let attData={},inspectData={},recvData=[],creditData=[],testingData=[],portfolioData={months:{}},ownerDeposits=[],truckData=[];
 let draft={},mobilItems=[],depositItems=[],advItems=[],creditSaleItems=[],pumpExpItems=[];
 let currentStep=0,currentModule=null;
 // Attendance date selector (default today)
@@ -522,6 +523,7 @@ async function loadCloud(){
     const port=await cloudGet(STORE_KEY_PORTFOLIO);if(port)portfolioData=port;
     const test=await cloudGet(STORE_KEY_TESTING);if(test)testingData=test;
     const depO=await cloudGet(DEPOSIT_KEY);if(depO)ownerDeposits=depO;
+    const trk=await cloudGet(STORE_KEY_TRUCK);if(trk)truckData=trk;
     if(cloudData.records.length>0){
       syncStatus('ok','☁️ Firebase connected');
     } else {
@@ -540,6 +542,7 @@ async function loadCloud(){
       const ins=JSON.parse(localStorage.getItem(STORE_KEY_INSPECT)||'null');if(ins)inspectData=ins;
       const cred=JSON.parse(localStorage.getItem(STORE_KEY_CREDIT)||'null');if(cred)creditData=cred;
       const depO=JSON.parse(localStorage.getItem(DEPOSIT_KEY)||'null');if(depO)ownerDeposits=depO;
+      const trk=JSON.parse(localStorage.getItem(STORE_KEY_TRUCK)||'null');if(trk)truckData=trk;
       syncStatus('err','⚠️ Offline — using cached data. Tap to retry.');
     }catch(e2){
       syncStatus('err','⚠️ No connection. Tap to retry.');
@@ -647,7 +650,7 @@ function openModule(id){
   document.getElementById('moduleSelect').style.display='none';
   document.getElementById('moduleContent').style.display='';
   currentStep=0;
-  ({sales:initSalesModule,attendance:renderAttendance,inspection:renderInspection,testing:renderTesting,received:renderReceived,creditsales:renderCreditSales})[id]();
+  ({sales:initSalesModule,attendance:renderAttendance,inspection:renderInspection,testing:renderTesting,received:renderReceived,creditsales:renderCreditSales,trucklog:renderTruckLog})[id]();
 }
 function backToModules(){
   document.getElementById('moduleSelect').style.display='';
@@ -1248,6 +1251,8 @@ async function saveAttendance(){
 
 // ── MODULE 3: INSPECTION ──────────────────────────────────────────────────────
 let inspDate=todayKey0();
+let inspFuel='HSD';
+
 function renderInspection(){
   document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="backToModules()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
   document.getElementById('stepContent').innerHTML=`
@@ -1257,220 +1262,231 @@ function renderInspection(){
         <div class="lbl">Date</div>
         <input type="date" id="inspDateInput" value="${inspDate}" max="${todayKey0()}" style="padding:10px 14px;font-size:16px;border:2px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none">
       </div>
-      <div class="btn-row" style="margin-top:12px">
-        <button class="btn-primary" onclick="confirmInspDate()">Continue →</button>
+    </div>
+    <div class="card">
+      <div class="card-title">🔍 Choose Inspection</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <button onclick="startInspection('HSD')" style="padding:16px 10px;border:2px solid var(--ioc-navy);border-radius:var(--rl);background:var(--ioc-navy-light);cursor:pointer;font-family:var(--ui);text-align:center">
+          <div style="font-size:22px;margin-bottom:4px">🛢️</div>
+          <div style="font-size:14px;font-weight:700;color:var(--ioc-navy)">HSD Diesel</div>
+          <div style="font-size:11px;color:var(--ink-light);margin-top:2px">Daily tank check</div>
+        </button>
+        <button onclick="startInspection('MS')" style="padding:16px 10px;border:2px solid var(--ioc-red);border-radius:var(--rl);background:var(--ioc-red-light);cursor:pointer;font-family:var(--ui);text-align:center">
+          <div style="font-size:22px;margin-bottom:4px">⛽</div>
+          <div style="font-size:14px;font-weight:700;color:var(--ioc-red)">MS Petrol</div>
+          <div style="font-size:11px;color:var(--ink-light);margin-top:2px">Daily tank check</div>
+        </button>
       </div>
-    </div>`;
+      <button onclick="renderInspCumulative()" style="width:100%;padding:14px 10px;border:2px solid var(--ioc-border-strong);border-radius:var(--rl);background:#fff;cursor:pointer;font-family:var(--ui);text-align:center">
+        <div style="font-size:13px;font-weight:700;color:var(--ink)">📊 Cumulative Check — From Starting Meters (Day 0)</div>
+        <div style="font-size:11px;color:var(--ink-light);margin-top:2px">Total pumped since beginning vs received vs current stock</div>
+      </button>
+    </div>
+    ${inspHistoryCard()}`;
 }
 
-function confirmInspDate(){
-  inspDate=document.getElementById('inspDateInput').value||todayKey0();
+function startInspection(fuel){
+  inspFuel=fuel;
+  inspDate=document.getElementById('inspDateInput')?.value||inspDate||todayKey0();
   renderInspectionForm();
 }
 
-function renderInspectionForm(){
-  const saved=inspectData[inspDate]||{};
-  const dateRec=cloudData.records.find(r=>r.date===inspDate);
-  const hsdNet=dateRec?(dateRec.hsdNet||0):0;
-  const msNet=dateRec?(dateRec.msNet||0):0;
-  // Auto-load previous dip from previous inspection record
-  const prevInspEntry=Object.entries(inspectData)
-    .filter(([d])=>d<inspDate)
+// Gather everything automatically for a date+fuel: prev dip, received, net sale, testing
+function inspAuto(date,fuel){
+  const pfx=fuel==='HSD'?'hsd':'ms';
+  const rec=cloudData.records.find(r=>r.date===date);
+  const sale=rec?(pfx==='hsd'?(rec.hsdNet||0):(rec.msNet||0)):null;
+  const recv=recvData.filter(r=>r.date===date&&r.fuel===fuel).reduce((a,r)=>a+(Number(r.qty)||0),0);
+  const test=testingData.filter(t=>t.date===date&&t.fuel===fuel).reduce((a,t)=>a+(Number(t.qty)||0),0);
+  const prevEntry=Object.entries(inspectData)
+    .filter(([d,v])=>d<date&&v&&v[pfx+'Dip']!=null&&v[pfx+'Dip']!=='')
     .sort((a,b)=>b[0].localeCompare(a[0]))[0];
-  const prevInspDate=prevInspEntry?prevInspEntry[0]:'—';
-  const prevInspData=prevInspEntry?prevInspEntry[1]:{};
-  const autoPrevHSD=saved.hsdPrevDip!=null?saved.hsdPrevDip:(prevInspData.hsdDip||'');
-  const autoPrevMS=saved.msPrevDip!=null?saved.msPrevDip:(prevInspData.msDip||'');
+  return{pfx,rec,sale,recv,test,
+    prevDate:prevEntry?prevEntry[0]:null,
+    prevDip:prevEntry?(Number(prevEntry[1][pfx+'Dip'])||0):null};
+}
 
-  document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="backToModules()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
+function renderInspectionForm(){
+  const fuel=inspFuel,a=inspAuto(inspDate,fuel);
+  const saved=inspectData[inspDate]||{};
+  const savedDip=saved[a.pfx+'Dip'];
+  const firstTime=a.prevDip==null;
+  const tagCls=fuel==='HSD'?'tag-hsd':'tag-ms';
+  const clr=fuel==='HSD'?'var(--ioc-navy)':'var(--ioc-red)';
+  const bg=fuel==='HSD'?'var(--ioc-navy-light)':'var(--ioc-red-light)';
+  document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="renderInspection()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
   document.getElementById('stepContent').innerHTML=`
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div class="card-title" style="margin:0">🔍 Inspection — ${inspDate}</div>
-      <button class="btn-secondary" onclick="renderInspection()" style="font-size:11px;padding:5px 10px">← Change Date</button>
+      <div class="card-title" style="margin:0"><span class="tag ${tagCls}">${fuel}</span> Inspection — ${inspDate}</div>
+      <button class="btn-secondary" onclick="renderInspection()" style="font-size:11px;padding:5px 10px">← Change</button>
     </div>
-    <div class="alert-info" style="margin-bottom:16px">
-      Previous dip auto-loaded from <b>${prevInspDate}</b> inspection.
-      ${dateRec?`Net sale auto-filled from <b>${inspDate}</b> sales record.`:'No sales record for this date — enter manually.'}
+    ${savedDip!=null&&savedDip!==''?`<div class="alert-info" style="margin-bottom:12px">✅ Already saved for ${inspDate} — saving again will update it.</div>`:''}
+    ${a.sale==null?`<div class="alert-warn" style="margin-bottom:12px">⚠️ No Daily Reckoning record for ${inspDate} — net sale counted as 0. Save the day's sales first for accurate stock.</div>`:''}
+    <div style="padding:12px 14px;background:${bg};border-radius:var(--r);margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:${clr};text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">🤖 Auto-loaded — nothing to type here</div>
+      ${firstTime?'':`<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0"><span>Previous Dip <span style="color:var(--ink-light)">(from ${a.prevDate} inspection)</span></span><b>${fmtL(a.prevDip)}</b></div>`}
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:var(--green)"><span>+ Received <span style="color:var(--ink-light)">(Fuel Received module)</span></span><b>+${fmtL(a.recv)}</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:var(--ioc-red)"><span>− Net Sale <span style="color:var(--ink-light)">(Daily Reckoning ${inspDate})</span></span><b>−${fmtL(a.sale||0)}</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:var(--ioc-red)"><span>− Testing <span style="color:var(--ink-light)">(Testing module, all types)</span></span><b>−${fmtL(a.test)}</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding:6px 0;border-top:1px solid var(--ioc-border);margin-top:4px"><span>Expected Dip</span><b id="insp_expected">—</b></div>
     </div>
-    <div style="margin-bottom:20px">
-      <div style="font-size:13px;font-weight:700;color:var(--ioc-navy);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid var(--ioc-navy-light)"><span class="tag tag-hsd">HSD</span> Diesel Stock Analysis</div>
-      <div class="grid3" style="margin-bottom:10px">
-        <div class="field"><div class="lbl">Previous Dip (${prevInspDate}) L</div><input type="number" id="insp_hsd_prevdip" value="${autoPrevHSD}" placeholder="Prev dip" step="0.01"></div>
-        <div class="field"><div class="lbl">Received Today (L)</div><input type="number" id="insp_hsd_recv" value="${saved.hsdRecv||0}" step="0.01" placeholder="0"></div>
-        <div class="field"><div class="lbl">Net Sale ${inspDate} (L)</div><input type="number" id="insp_hsd_sale" value="${saved.hsdSale||hsdNet.toFixed(2)}" step="0.01" style="background:#f8f9ff"></div>
-      </div>
-      <div class="grid2">
-        <div class="field"><div class="lbl">Current Dip Reading (L)</div><input type="number" id="insp_hsd_dip" value="${saved.hsdDip||''}" placeholder="Today's dip" step="0.01"></div>
-        <div class="field"><div class="lbl">Testing Done (L)</div><input type="number" id="insp_hsd_test" value="${saved.hsdTest||0}" step="0.01" placeholder="0"></div>
-      </div>
-      <div id="insp_hsd_result" style="margin-top:10px;display:none"></div>
+    ${firstTime?`<div class="field" style="margin-bottom:12px">
+      <div class="lbl">First ${fuel} inspection — enter opening stock / dip (L)</div>
+      <input type="number" id="insp_prevdip_manual" step="0.01" placeholder="Stock in tank before today" oninput="inspLive()">
+      <div style="font-size:11px;color:var(--ink-light);margin-top:3px">Only needed once — future inspections load this automatically.</div>
+    </div>`:''}
+    <div class="field" style="margin-bottom:12px">
+      <div class="lbl">📏 Today's Dip Reading (L)</div>
+      <input type="number" id="insp_dip" value="${savedDip!=null?savedDip:''}" step="0.01" placeholder="Measure tank & enter dip" style="font-size:18px;padding:12px" oninput="inspLive()">
     </div>
-    <div>
-      <div style="font-size:13px;font-weight:700;color:var(--ioc-red);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid var(--ioc-red-light)"><span class="tag tag-ms">MS</span> Petrol Stock Analysis</div>
-      <div class="grid3" style="margin-bottom:10px">
-        <div class="field"><div class="lbl">Previous Dip (${prevInspDate}) L</div><input type="number" id="insp_ms_prevdip" value="${autoPrevMS}" placeholder="Prev dip" step="0.01"></div>
-        <div class="field"><div class="lbl">Received Today (L)</div><input type="number" id="insp_ms_recv" value="${saved.msRecv||0}" step="0.01" placeholder="0"></div>
-        <div class="field"><div class="lbl">Net Sale ${inspDate} (L)</div><input type="number" id="insp_ms_sale" value="${saved.msSale||msNet.toFixed(2)}" step="0.01" style="background:#f8f9ff"></div>
-      </div>
-      <div class="grid2">
-        <div class="field"><div class="lbl">Current Dip Reading (L)</div><input type="number" id="insp_ms_dip" value="${saved.msDip||''}" placeholder="Today's dip" step="0.01"></div>
-        <div class="field"><div class="lbl">Testing Done (L)</div><input type="number" id="insp_ms_test" value="${saved.msTest||0}" step="0.01" placeholder="0"></div>
-      </div>
-      <div id="insp_ms_result" style="margin-top:10px;display:none"></div>
-    </div>
-  </div>
-  <div id="stockAnalysisCard" style="display:none" class="card">
-    <div class="card-title">📊 Stock Analysis Report — ${inspDate}</div>
-    <div id="stockAnalysisContent"></div>
-  </div>
-  <!-- TOTAL INSPECTION ANALYSIS -->
-  <div class="card">
-    <div class="card-title">📊 Total Cumulative Stock Analysis</div>
-    ${(()=>{
-      const allDates=Object.keys(inspectData).sort();
-      if(!allDates.length)return'<div style="color:var(--ink-light);font-size:12px;padding:8px">No inspection data yet. Save daily inspections to see totals.</div>';
-      const totalHSDRecv=allDates.reduce((a,d)=>a+(inspectData[d].hsdRecv||0),0);
-      const totalMSRecv=allDates.reduce((a,d)=>a+(inspectData[d].msRecv||0),0);
-      const totalHSDSale=cloudData.records.reduce((a,r)=>a+(r.hsdNet||0),0);
-      const totalMSSale=cloudData.records.reduce((a,r)=>a+(r.msNet||0),0);
-      const latestInsp=inspectData[allDates[allDates.length-1]]||{};
-      const firstInsp=inspectData[allDates[0]]||{};
-      return `<div class="grid2" style="margin-bottom:12px">
-        <div style="padding:12px;background:var(--ioc-navy-light);border-radius:var(--r)">
-          <div style="font-size:11px;font-weight:700;color:var(--ioc-navy);margin-bottom:6px"><span class="tag tag-hsd">HSD</span> Diesel</div>
-          <div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0"><span>Total Received</span><span><b>${totalHSDRecv.toFixed(2)} L</b></span></div>
-          <div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0"><span>Total Net Sold</span><span><b>${totalHSDSale.toFixed(2)} L</b></span></div>
-          <div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid var(--ioc-border);margin-top:4px"><span>Current Dip</span><span style="font-weight:700;color:var(--ioc-navy)">${(latestInsp.hsdDip||0).toFixed(2)} L</span></div>
-        </div>
-        <div style="padding:12px;background:var(--ioc-red-light);border-radius:var(--r)">
-          <div style="font-size:11px;font-weight:700;color:var(--ioc-red);margin-bottom:6px"><span class="tag tag-ms">MS</span> Petrol</div>
-          <div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0"><span>Total Received</span><span><b>${totalMSRecv.toFixed(2)} L</b></span></div>
-          <div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0"><span>Total Net Sold</span><span><b>${totalMSSale.toFixed(2)} L</b></span></div>
-          <div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid var(--ioc-border);margin-top:4px"><span>Current Dip</span><span style="font-weight:700;color:var(--ioc-red)">${(latestInsp.msDip||0).toFixed(2)} L</span></div>
-        </div>
-      </div>
-      <div style="font-size:11px;color:var(--ink-light);text-align:center">Based on ${allDates.length} inspection entries · ${cloudData.records.length} sales records · Last updated: ${allDates[allDates.length-1]}</div>`;
-    })()}
-  </div>
-  <div class="card">
-    <div class="card-title">📅 Daily Inspection History</div>
-    <div style="overflow-x:auto"><table class="rtable">
-      <thead><tr><th>Date</th><th>HSD Dip</th><th>HSD Recv</th><th>HSD Diff</th><th>MS Dip</th><th>MS Recv</th><th>MS Diff</th></tr></thead>
-      <tbody>${Object.entries(inspectData).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,10).map(([date,d])=>`
-        <tr>
-          <td>${date}</td><td>${(d.hsdDip||0).toFixed(2)} L</td><td>${(d.hsdRecv||0).toFixed(2)} L</td>
-          <td style="color:${Math.abs(d.hsdDiff||0)>5?'var(--ioc-red)':' var(--green)'};font-weight:600">${d.hsdDiff!=null?(d.hsdDiff>0?'+':'')+d.hsdDiff.toFixed(2)+' L':'—'}</td>
-          <td>${(d.msDip||0).toFixed(2)} L</td><td>${(d.msRecv||0).toFixed(2)} L</td>
-          <td style="color:${Math.abs(d.msDiff||0)>5?'var(--ioc-red)':'var(--green)'};font-weight:600">${d.msDiff!=null?(d.msDiff>0?'+':'')+d.msDiff.toFixed(2)+' L':'—'}</td>
-        </tr>`).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--ink-light);padding:16px">No history yet</td></tr>'}</tbody>
-    </table></div>
-  </div>
-  <div class="btn-row"><button class="btn-primary" onclick="calcInspection()">📊 Calculate Stock</button><button class="btn-secondary" onclick="saveInspection()">💾 Save</button></div>
-  <div id="inspMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>`;
+    <div id="insp_live" style="margin-bottom:12px"></div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveInspection()">💾 Save ${fuel} Inspection</button></div>
+    <div id="inspMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>
+  </div>`;
+  inspLive();
 }
 
-function calcInspection(){
-  // Auto-refresh sale from sales record for the selected date
-  const dateRec=cloudData.records.find(r=>r.date===inspDate);
-  if(dateRec){
-    const hsdEl=document.getElementById('insp_hsd_sale');
-    const msEl=document.getElementById('insp_ms_sale');
-    if(hsdEl&&!hsdEl._userEdited)hsdEl.value=(dateRec.hsdNet||0).toFixed(2);
-    if(msEl&&!msEl._userEdited)msEl.value=(dateRec.msNet||0).toFixed(2);
-  }
-  // HSD
-  const hsdPrevDip=gv('insp_hsd_prevdip');
-  const hsdRecv=gv('insp_hsd_recv');
-  const hsdSale=gv('insp_hsd_sale');
-  const hsdTest=gv('insp_hsd_test');
-  const hsdDip=gv('insp_hsd_dip');
-  // Expected = PrevDip + Received - Sale - Testing
-  const hsdExpected=hsdPrevDip+hsdRecv-hsdSale-hsdTest;
-  const hsdDiff=hsdDip-hsdExpected;
-  const hsdOk=Math.abs(hsdDiff)<=5;
+function inspCalcNow(){
+  const a=inspAuto(inspDate,inspFuel);
+  const prevDip=a.prevDip!=null?a.prevDip:gv('insp_prevdip_manual');
+  const sale=a.sale||0;
+  const expected=prevDip+a.recv-sale-a.test;
+  const dipEl=document.getElementById('insp_dip');
+  const hasDip=dipEl&&dipEl.value!=='';
+  const dip=gv('insp_dip');
+  return{a,prevDip,sale,expected,hasDip,dip,diff:dip-expected,ok:Math.abs(dip-expected)<=5};
+}
 
-  // MS
-  const msPrevDip=gv('insp_ms_prevdip');
-  const msRecv=gv('insp_ms_recv');
-  const msSale=gv('insp_ms_sale');
-  const msTest=gv('insp_ms_test');
-  const msDip=gv('insp_ms_dip');
-  const msExpected=msPrevDip+msRecv-msSale-msTest;
-  const msDiff=msDip-msExpected;
-  const msOk=Math.abs(msDiff)<=5;
-
-  // Show inline results
-  const hEl=document.getElementById('insp_hsd_result');
-  hEl.style.display='';
-  hEl.innerHTML=`
-    <div style="padding:10px 14px;border-radius:var(--r);background:${hsdOk?'var(--ioc-navy-light)':'var(--ioc-red-light)'};border-left:3px solid ${hsdOk?'var(--ioc-navy)':'var(--ioc-red)'}">
-      <div style="font-size:12px;font-weight:700;color:${hsdOk?'var(--ioc-navy)':'var(--ioc-red)'};margin-bottom:4px">HSD: ${hsdOk?'✅ STOCK OK':'⚠️ VARIANCE DETECTED'}</div>
-      <div style="font-size:11px;color:var(--ink)">Prev Dip ${fmtL(hsdPrevDip)} + Recv ${fmtL(hsdRecv)} − Sale ${fmtL(hsdSale)} − Test ${fmtL(hsdTest)} = Expected <b>${fmtL(hsdExpected)}</b></div>
-      <div style="font-size:11px;color:var(--ink);margin-top:2px">Actual Dip: <b>${fmtL(hsdDip)}</b> | Difference: <b style="color:${hsdOk?'var(--green)':'var(--ioc-red)'}">${hsdDiff>=0?'+':''}${fmtL(hsdDiff)}</b></div>
+function inspLive(){
+  const c=inspCalcNow();
+  const ex=document.getElementById('insp_expected');
+  if(ex)ex.textContent=fmtL(c.expected);
+  const el=document.getElementById('insp_live');
+  if(!el)return;
+  if(!c.hasDip){el.innerHTML='';return;}
+  el.innerHTML=`
+    <div style="padding:12px 14px;border-radius:var(--r);background:${c.ok?'#f0fff4':'var(--ioc-red-light)'};border-left:3px solid ${c.ok?'var(--green)':'var(--ioc-red)'}">
+      <div style="font-size:13px;font-weight:700;color:${c.ok?'var(--green)':'var(--ioc-red)'};margin-bottom:4px">${inspFuel}: ${c.ok?'✅ STOCK OK':'⚠️ VARIANCE DETECTED'}</div>
+      <div style="font-size:11px;color:var(--ink)">Expected <b>${fmtL(c.expected)}</b> | Actual <b>${fmtL(c.dip)}</b> | Difference <b style="color:${c.ok?'var(--green)':'var(--ioc-red)'}">${c.diff>=0?'+':''}${fmtL(c.diff)}</b> <span style="color:var(--ink-light)">(tolerance ±5 L)</span></div>
     </div>`;
-
-  const mEl=document.getElementById('insp_ms_result');
-  mEl.style.display='';
-  mEl.innerHTML=`
-    <div style="padding:10px 14px;border-radius:var(--r);background:${msOk?'#f0fff4':'var(--ioc-red-light)'};border-left:3px solid ${msOk?'var(--green)':'var(--ioc-red)'}">
-      <div style="font-size:12px;font-weight:700;color:${msOk?'var(--green)':'var(--ioc-red)'};margin-bottom:4px">MS: ${msOk?'✅ STOCK OK':'⚠️ VARIANCE DETECTED'}</div>
-      <div style="font-size:11px;color:var(--ink)">Prev Dip ${fmtL(msPrevDip)} + Recv ${fmtL(msRecv)} − Sale ${fmtL(msSale)} − Test ${fmtL(msTest)} = Expected <b>${fmtL(msExpected)}</b></div>
-      <div style="font-size:11px;color:var(--ink);margin-top:2px">Actual Dip: <b>${fmtL(msDip)}</b> | Difference: <b style="color:${msOk?'var(--green)':'var(--ioc-red)'}">${msDiff>=0?'+':''}${fmtL(msDiff)}</b></div>
-    </div>`;
-
-  // Full stock analysis card
-  const card=document.getElementById('stockAnalysisCard');
-  const content=document.getElementById('stockAnalysisContent');
-  card.style.display='';
-  content.innerHTML=`
-    <div class="grid2" style="margin-bottom:16px">
-      <div style="padding:14px;background:${hsdOk?'var(--ioc-navy-light)':'var(--ioc-red-light)'};border-radius:var(--r);border:1px solid ${hsdOk?'var(--ioc-navy)':'var(--ioc-red)'}">
-        <div style="font-size:11px;font-weight:700;color:var(--ink-light);text-transform:uppercase;margin-bottom:8px">HSD Stock</div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Opening Dip</span><span><b>${fmtL(hsdPrevDip)}</b></span></div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--green)"><span>+ Received</span><span><b>+${fmtL(hsdRecv)}</b></span></div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--ioc-red)"><span>− Net Sale</span><span><b>−${fmtL(hsdSale)}</b></span></div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--ioc-red)"><span>− Testing</span><span><b>−${fmtL(hsdTest)}</b></span></div>
-        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding:6px 0;border-top:1px solid var(--ioc-border);margin-top:4px"><span>Expected Dip</span><span>${fmtL(hsdExpected)}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding:3px 0"><span>Actual Dip</span><span>${fmtL(hsdDip)}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;padding:8px 0;border-top:2px solid ${hsdOk?'var(--ioc-navy)':'var(--ioc-red)'};margin-top:6px;color:${hsdOk?'var(--green)':'var(--ioc-red)'}"><span>Variance</span><span>${hsdDiff>=0?'+':''}${fmtL(hsdDiff)}</span></div>
-        <div style="text-align:center;font-size:13px;font-weight:700;padding:6px;border-radius:var(--r);background:${hsdOk?'var(--green)':'var(--ioc-red)'};color:#fff;margin-top:4px">${hsdOk?'✅ STOCK OK':'⚠️ CHECK STOCK'}</div>
-      </div>
-      <div style="padding:14px;background:${msOk?'#f0fff4':'var(--ioc-red-light)'};border-radius:var(--r);border:1px solid ${msOk?'var(--green)':'var(--ioc-red)'}">
-        <div style="font-size:11px;font-weight:700;color:var(--ink-light);text-transform:uppercase;margin-bottom:8px">MS Stock</div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Opening Dip</span><span><b>${fmtL(msPrevDip)}</b></span></div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--green)"><span>+ Received</span><span><b>+${fmtL(msRecv)}</b></span></div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--ioc-red)"><span>− Net Sale</span><span><b>−${fmtL(msSale)}</b></span></div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--ioc-red)"><span>− Testing</span><span><b>−${fmtL(msTest)}</b></span></div>
-        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding:6px 0;border-top:1px solid var(--ioc-border);margin-top:4px"><span>Expected Dip</span><span>${fmtL(msExpected)}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding:3px 0"><span>Actual Dip</span><span>${fmtL(msDip)}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;padding:8px 0;border-top:2px solid ${msOk?'var(--green)':'var(--ioc-red)'};margin-top:6px;color:${msOk?'var(--green)':'var(--ioc-red)'}"><span>Variance</span><span>${msDiff>=0?'+':''}${fmtL(msDiff)}</span></div>
-        <div style="text-align:center;font-size:13px;font-weight:700;padding:6px;border-radius:var(--r);background:${msOk?'var(--green)':'var(--ioc-red)'};color:#fff;margin-top:4px">${msOk?'✅ STOCK OK':'⚠️ CHECK STOCK'}</div>
-      </div>
-    </div>
-    <div style="padding:10px 14px;background:${hsdOk&&msOk?'#f0fff4':'#FFF5F5'};border-radius:var(--r);text-align:center;font-size:13px;font-weight:700;color:${hsdOk&&msOk?'var(--green)':'var(--ioc-red)'}">
-      ${hsdOk&&msOk?'✅ All stocks verified — No variance detected':'⚠️ Variance detected — Please recheck dip readings'}
-    </div>
-    <div style="margin-top:10px;font-size:11px;color:var(--ink-light);text-align:center">Formula: Expected Dip = Opening Dip + Received − Net Sale − Testing &nbsp;|&nbsp; Tolerance: ±5 L</div>`;
-
-  // Store diffs for saving
-  window._inspDiffs={hsdDiff,msDiff};
 }
 
 async function saveInspection(){
-  const diffs=window._inspDiffs||{};
-  inspectData[inspDate]={
-    hsdDip:gv('insp_hsd_dip'),hsdPrevDip:gv('insp_hsd_prevdip'),
-    hsdRecv:gv('insp_hsd_recv'),hsdSale:gv('insp_hsd_sale'),
-    hsdTest:gv('insp_hsd_test'),hsdDiff:diffs.hsdDiff||0,
-    msDip:gv('insp_ms_dip'),msPrevDip:gv('insp_ms_prevdip'),
-    msRecv:gv('insp_ms_recv'),msSale:gv('insp_ms_sale'),
-    msTest:gv('insp_ms_test'),msDiff:diffs.msDiff||0,
-    savedAt:new Date().toISOString()
-  };
+  const dipEl=document.getElementById('insp_dip');
+  if(!dipEl||dipEl.value===''){alert("Enter today's dip reading first");return;}
+  const c=inspCalcNow();
+  if(c.a.prevDip==null&&(!document.getElementById('insp_prevdip_manual')||document.getElementById('insp_prevdip_manual').value==='')){
+    alert('Enter the opening stock (first inspection)');return;
+  }
+  const e=inspectData[inspDate]||{};
+  e[c.a.pfx+'Dip']=c.dip;
+  e[c.a.pfx+'PrevDip']=c.prevDip;
+  e[c.a.pfx+'Recv']=c.a.recv;
+  e[c.a.pfx+'Sale']=c.sale;
+  e[c.a.pfx+'Test']=c.a.test;
+  e[c.a.pfx+'Diff']=c.diff;
+  e.savedAt=new Date().toISOString();
+  inspectData[inspDate]=e;
   await cloudSet(STORE_KEY_INSPECT,inspectData);
   const el=document.getElementById('inspMsg');
-  if(el){el.textContent=`✅ Inspection saved for ${inspDate}!`;setTimeout(()=>el.textContent='',3000);}
+  if(el){el.textContent=`✅ ${inspFuel} inspection saved for ${inspDate}! Variance: ${c.diff>=0?'+':''}${fmtL(c.diff)}`;setTimeout(()=>el.textContent='',4000);}
+}
+
+// ── CUMULATIVE CHECK FROM DAY 0 STARTING METERS ──────────────────────────────
+function renderInspCumulative(){
+  document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="renderInspection()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
+
+  const fuelBlock=(fuel)=>{
+    const pfx=fuel==='HSD'?'hsd':'ms';
+    const nozzles=fuel==='HSD'?NOZZLES_HSD:NOZZLES_MS;
+    const day0=fuel==='HSD'?HSD_DAY0:MS_DAY0;
+    const clr=fuel==='HSD'?'var(--ioc-navy)':'var(--ioc-red)';
+    const bg=fuel==='HSD'?'var(--ioc-navy-light)':'var(--ioc-red-light)';
+    // Meter-based total pumped since Day 0
+    let pumped=0;
+    const nozRows=nozzles.map((n,i)=>{
+      const start=day0[i]||0;
+      const cur=Number(cloudData.prevClosing[n])||0;
+      const p=cur>start?cur-start:0;
+      pumped+=p;
+      return`<tr><td>${n}</td><td class="right">${start.toFixed(2)}</td><td class="right">${cur>0?cur.toFixed(2):'—'}</td><td class="right"><b>${p.toFixed(2)} L</b></td></tr>`;
+    }).join('');
+    // Records-based totals
+    const totalSales=cloudData.records.reduce((a,r)=>a+(r[pfx+'Net']||0),0);
+    let totalRecv=recvData.filter(r=>r.fuel===fuel).reduce((a,r)=>a+(Number(r.qty)||0),0);
+    if(!totalRecv)totalRecv=Object.values(inspectData).reduce((a,v)=>a+(v[pfx+'Recv']||0),0);
+    const totalTest=testingData.filter(t=>t.fuel===fuel).reduce((a,t)=>a+(Number(t.qty)||0),0);
+    // Lifetime reconciliation from first inspection
+    const inspDates=Object.keys(inspectData).filter(d=>inspectData[d]&&inspectData[d][pfx+'Dip']!=null&&inspectData[d][pfx+'Dip']!=='').sort();
+    let recon='';
+    if(inspDates.length){
+      const firstD=inspDates[0],lastD=inspDates[inspDates.length-1];
+      const firstDip=Number(inspectData[firstD][pfx+'PrevDip']!=null?inspectData[firstD][pfx+'PrevDip']:inspectData[firstD][pfx+'Dip'])||0;
+      const recvSince=recvData.filter(r=>r.fuel===fuel&&r.date>=firstD).reduce((a,r)=>a+(Number(r.qty)||0),0);
+      const salesSince=cloudData.records.filter(r=>r.date>=firstD).reduce((a,r)=>a+(r[pfx+'Net']||0),0);
+      const testSince=testingData.filter(t=>t.fuel===fuel&&t.date>=firstD).reduce((a,t)=>a+(Number(t.qty)||0),0);
+      const expectedNow=firstDip+recvSince-salesSince-testSince;
+      const lastDip=Number(inspectData[lastD][pfx+'Dip'])||0;
+      const lifeDiff=lastDip-expectedNow;
+      const lifeOk=Math.abs(lifeDiff)<=10;
+      recon=`
+      <div style="margin-top:10px;padding:10px 12px;background:#fff;border:1px solid var(--ioc-border);border-radius:var(--r)">
+        <div style="font-size:11px;font-weight:700;color:${clr};margin-bottom:6px">🧮 Lifetime Reconciliation (since ${firstD})</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0"><span>Opening stock (${firstD})</span><b>${fmtL(firstDip)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:var(--green)"><span>+ Received since</span><b>+${fmtL(recvSince)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:var(--ioc-red)"><span>− Sales since</span><b>−${fmtL(salesSince)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:var(--ioc-red)"><span>− Testing since</span><b>−${fmtL(testSince)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;padding:4px 0;border-top:1px solid var(--ioc-border);margin-top:3px"><span>Expected stock now</span><b>${fmtL(expectedNow)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;padding:2px 0"><span>Latest dip (${lastD})</span><b>${fmtL(lastDip)}</b></div>
+        <div style="text-align:center;font-size:12px;font-weight:700;padding:6px;border-radius:var(--r);background:${lifeOk?'var(--green)':'var(--ioc-red)'};color:#fff;margin-top:6px">${lifeOk?'✅':'⚠️'} Lifetime variance: ${lifeDiff>=0?'+':''}${fmtL(lifeDiff)}</div>
+      </div>`;
+    }else{
+      recon=`<div style="margin-top:10px;font-size:11px;color:var(--ink-light)">No ${fuel} inspection saved yet — save one to see lifetime reconciliation.</div>`;
+    }
+    const meterVsRec=pumped-totalSales;
+    return`
+    <div class="card">
+      <div class="card-title"><span class="tag ${fuel==='HSD'?'tag-hsd':'tag-ms'}">${fuel}</span> Cumulative — From Starting Meters</div>
+      <div style="overflow-x:auto"><table class="rtable">
+        <thead><tr><th>Nozzle</th><th class="right">Day 0 Start</th><th class="right">Current Meter</th><th class="right">Pumped</th></tr></thead>
+        <tbody>${nozRows}</tbody>
+      </table></div>
+      <div style="padding:12px;background:${bg};border-radius:var(--r);margin-top:10px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Total pumped by meters (since Day 0)</span><b>${fmtL(pumped)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Total net sales recorded</span><b>${fmtL(totalSales)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Meter − Records difference</span><b style="color:${Math.abs(meterVsRec)<=10?'var(--green)':'var(--ioc-red)'}">${meterVsRec>=0?'+':''}${fmtL(meterVsRec)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Total received</span><b>${fmtL(totalRecv)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Total testing</span><b>${fmtL(totalTest)}</b></div>
+      </div>
+      ${recon}
+    </div>`;
+  };
+
+  document.getElementById('stepContent').innerHTML=`
+    <div class="alert-info" style="margin-bottom:12px">📊 Everything below is calculated automatically from starting (Day 0) meters, Daily Reckoning records, Fuel Received & Testing modules.</div>
+    ${fuelBlock('HSD')}
+    ${fuelBlock('MS')}`;
+}
+
+// Shared recent-history card (both fuels)
+function inspHistoryCard(){
+  const rows=Object.entries(inspectData).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,10).map(([date,d])=>`
+    <tr>
+      <td>${date}</td>
+      <td>${d.hsdDip!=null&&d.hsdDip!==''?fmtL(d.hsdDip):'—'}</td>
+      <td style="color:${Math.abs(d.hsdDiff||0)>5?'var(--ioc-red)':'var(--green)'};font-weight:600">${d.hsdDiff!=null?(d.hsdDiff>0?'+':'')+Number(d.hsdDiff).toFixed(2)+' L':'—'}</td>
+      <td>${d.msDip!=null&&d.msDip!==''?fmtL(d.msDip):'—'}</td>
+      <td style="color:${Math.abs(d.msDiff||0)>5?'var(--ioc-red)':'var(--green)'};font-weight:600">${d.msDiff!=null?(d.msDiff>0?'+':'')+Number(d.msDiff).toFixed(2)+' L':'—'}</td>
+    </tr>`).join('');
+  return`
+  <div class="card">
+    <div class="card-title">📅 Recent Inspections</div>
+    <div style="overflow-x:auto"><table class="rtable">
+      <thead><tr><th>Date</th><th>HSD Dip</th><th>HSD Diff</th><th>MS Dip</th><th>MS Diff</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:var(--ink-light);padding:16px">No history yet</td></tr>'}</tbody>
+    </table></div>
+  </div>`;
 }
 
 // ── MODULE 4: TESTING ─────────────────────────────────────────────────────────
@@ -1590,6 +1606,162 @@ async function addRecv(){
   await cloudSet(STORE_KEY_RECV,recvData);document.getElementById('recv_qty').value='';document.getElementById('recv_note').value='';renderReceived();
 }
 async function removeRecv(i){recvData.splice(i,1);await cloudSet(STORE_KEY_RECV,recvData);renderReceived();}
+
+// ── MODULE 5b: TRUCK LOG & CUSTOMER TRACKER ──────────────────────────────────
+function truckCustomers(){
+  const map={};
+  truckData.forEach(e=>{
+    const key=String(e.mobile||e.name||e.truck||'').trim().toLowerCase();
+    if(!key)return;
+    if(!map[key])map[key]={name:'',mobile:'',trucks:{},dayset:{},totalQty:0,drivers:{},lastEntry:null};
+    const c=map[key];
+    if(e.name)c.name=e.name;
+    if(e.mobile)c.mobile=e.mobile;
+    if(e.truck)c.trucks[String(e.truck).toUpperCase()]=1;
+    if(e.driver)c.drivers[e.driver]=1;
+    if(e.date)c.dayset[e.date]=1;
+    c.totalQty+=Number(e.qty)||0;
+    if(!c.lastEntry||e.date>c.lastEntry.date)c.lastEntry=e;
+  });
+  const today=new Date(todayKey0()+'T00:00:00');
+  return Object.values(map).map(c=>{
+    const days=Object.keys(c.dayset).sort();
+    const n=days.length,first=days[0],last=days[n-1];
+    const daysSince=Math.max(0,Math.round((today-new Date(last+'T00:00:00'))/86400000));
+    const avgGap=n>1?Math.max(1,Math.round((new Date(last+'T00:00:00')-new Date(first+'T00:00:00'))/86400000/(n-1))):null;
+    let status,sClr,sBg;
+    if(daysSince>=30||(avgGap&&daysSince>avgGap*3&&daysSince>=14)){status='❌ NOT COMING';sClr='#fff';sBg='var(--ioc-red)';}
+    else if(avgGap&&daysSince>avgGap*1.5&&daysSince>=4){status='⚠️ LACKING';sClr='var(--amber)';sBg='var(--amber-light)';}
+    else if(n>=8){status='💎 LOYAL';sClr='var(--ioc-navy)';sBg='var(--ioc-navy-light)';}
+    else if(n>=3){status='✅ REGULAR';sClr='var(--green)';sBg='var(--green-light)';}
+    else{status='🆕 NEW';sClr='var(--ink-light)';sBg='var(--ioc-off)';}
+    return{name:c.name||'—',mobile:c.mobile,trucks:Object.keys(c.trucks),drivers:Object.keys(c.drivers),
+      visitDays:n,totalQty:c.totalQty,first,last,daysSince,avgGap,status,sClr,sBg};
+  }).sort((a,b)=>b.last.localeCompare(a.last));
+}
+
+function renderTruckLog(){
+  document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="backToModules()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
+  const now=new Date();
+  const timeNow=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  // Known trucks for autocomplete (latest entry per truck)
+  const known={};
+  truckData.forEach(e=>{const t=String(e.truck||'').toUpperCase();if(t&&(!known[t]||e.date>known[t].date))known[t]=e;});
+  const dl=Object.entries(known).map(([t,e])=>`<option value="${t}">${e.name||''}${e.mobile?' · '+e.mobile:''}</option>`).join('');
+  const customers=truckCustomers();
+  const gone=customers.filter(c=>c.status==='❌ NOT COMING');
+  const lacking=customers.filter(c=>c.status==='⚠️ LACKING');
+  const loyal=customers.filter(c=>c.status==='💎 LOYAL');
+  const regular=customers.filter(c=>c.status==='✅ REGULAR');
+  const custRows=customers.map(c=>`
+    <tr>
+      <td style="font-weight:600">${c.name}${c.mobile?`<div style="font-size:10px;color:var(--ink-light)">📱 ${c.mobile}</div>`:''}</td>
+      <td style="font-size:11px">${c.trucks.join('<br>')}</td>
+      <td class="right">${c.visitDays}</td>
+      <td class="right">${fmtL(c.totalQty)}</td>
+      <td>${c.last}<div style="font-size:10px;color:${c.daysSince>7?'var(--ioc-red)':'var(--ink-light)'}">${c.daysSince===0?'today':c.daysSince+' day'+(c.daysSince>1?'s':'')+' ago'}</div></td>
+      <td><span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${c.sBg};color:${c.sClr};white-space:nowrap">${c.status}</span></td>
+    </tr>`).join('');
+  const recent=truckData.slice().reverse().slice(0,15);
+  const recentRows=recent.map((e,i)=>`
+    <tr>
+      <td>${e.date}<div style="font-size:10px;color:var(--ink-light)">${e.time||''}</div></td>
+      <td style="font-weight:600">${e.truck}</td>
+      <td>${e.name||'—'}${e.mobile?`<div style="font-size:10px;color:var(--ink-light)">📱 ${e.mobile}</div>`:''}</td>
+      <td style="font-size:11px">${e.driver||'—'}</td>
+      <td><span class="tag ${e.fuel==='HSD'?'tag-hsd':'tag-ms'}">${e.fuel}</span></td>
+      <td class="right">${fmtL(e.qty)}</td>
+      <td><button onclick="removeTruckEntry(${truckData.length-1-i})" class="rm-btn">✕</button></td>
+    </tr>`).join('');
+  document.getElementById('stepContent').innerHTML=`
+  <div class="card"><div class="card-title">🚚 Log Truck Entry</div>
+    <div class="grid3" style="margin-bottom:10px">
+      <div class="field"><div class="lbl">Date</div><input type="date" id="trk_date" value="${todayKey0()}" max="${todayKey0()}" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"></div>
+      <div class="field"><div class="lbl">Time</div><input type="time" id="trk_time" value="${timeNow}" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"></div>
+      <div class="field"><div class="lbl">Truck Number</div><input type="text" id="trk_truck" list="truckDatalist" placeholder="UP65 AB 1234" oninput="truckAutoFill()" style="text-transform:uppercase"><datalist id="truckDatalist">${dl}</datalist></div>
+    </div>
+    <div class="grid3" style="margin-bottom:10px">
+      <div class="field"><div class="lbl">Customer Name</div><input type="text" id="trk_name" placeholder="Customer / firm name"></div>
+      <div class="field"><div class="lbl">Mobile Number</div><input type="tel" id="trk_mobile" placeholder="10-digit mobile" maxlength="10"></div>
+      <div class="field"><div class="lbl">Driver Name</div><input type="text" id="trk_driver" placeholder="Driver (optional)"></div>
+    </div>
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="field"><div class="lbl">Fuel</div><select id="trk_fuel" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"><option value="HSD">HSD (Diesel)</option><option value="MS">MS (Petrol)</option></select></div>
+      <div class="field"><div class="lbl">Fuel Taken (L)</div><input type="number" id="trk_qty" placeholder="0" step="0.01"></div>
+    </div>
+    <button class="btn-primary" onclick="addTruckEntry()">+ Add Truck Entry</button>
+    <div id="trkMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>
+  </div>
+  ${gone.length||lacking.length?`
+  <div class="card" style="border-left:3px solid var(--ioc-red)">
+    <div class="card-title">🚨 Customers Slipping Away</div>
+    ${gone.map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--ioc-red-light);border-radius:var(--r);margin-bottom:6px">
+      <div><b style="font-size:13px">${c.name}</b> <span style="font-size:11px;color:var(--ink-light)">${c.trucks.join(', ')}${c.mobile?' · 📱 '+c.mobile:''}</span></div>
+      <div style="font-size:12px;font-weight:700;color:var(--ioc-red);text-align:right">Not coming since ${c.last}<div style="font-size:10px;font-weight:400">${c.daysSince} days ago${c.avgGap?' · used to come every ~'+c.avgGap+' day'+(c.avgGap>1?'s':''):''}</div></div>
+    </div>`).join('')}
+    ${lacking.map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--amber-light);border-radius:var(--r);margin-bottom:6px">
+      <div><b style="font-size:13px">${c.name}</b> <span style="font-size:11px;color:var(--ink-light)">${c.trucks.join(', ')}${c.mobile?' · 📱 '+c.mobile:''}</span></div>
+      <div style="font-size:12px;font-weight:700;color:var(--amber);text-align:right">Overdue — last ${c.last}<div style="font-size:10px;font-weight:400">${c.daysSince} days ago · usually every ~${c.avgGap} day${c.avgGap>1?'s':''}</div></div>
+    </div>`).join('')}
+  </div>`:''}
+  <div class="card"><div class="card-title">👥 Customer Tracker</div>
+    <div class="cum-grid" style="margin-bottom:12px">
+      <div class="cum-card"><div class="cum-label">Customers</div><div class="cum-val">${customers.length}</div></div>
+      <div class="cum-card"><div class="cum-label">💎 Loyal</div><div class="cum-val" style="color:var(--ioc-navy)">${loyal.length}</div></div>
+      <div class="cum-card"><div class="cum-label">✅ Regular</div><div class="cum-val" style="color:var(--green)">${regular.length}</div></div>
+      <div class="cum-card"><div class="cum-label">⚠️ Lacking</div><div class="cum-val" style="color:var(--amber)">${lacking.length}</div></div>
+      <div class="cum-card"><div class="cum-label">❌ Not Coming</div><div class="cum-val" style="color:var(--ioc-red)">${gone.length}</div></div>
+    </div>
+    <div style="overflow-x:auto"><table class="rtable">
+      <thead><tr><th>Customer</th><th>Trucks</th><th>Visits</th><th>Total Fuel</th><th>Last Visit</th><th>Status</th></tr></thead>
+      <tbody>${custRows||'<tr><td colspan="6" style="text-align:center;color:var(--ink-light);padding:16px">No customers yet — log the first truck above</td></tr>'}</tbody>
+    </table></div>
+    <div style="font-size:10px;color:var(--ink-light);margin-top:8px">💎 Loyal: 8+ visit days · ✅ Regular: 3+ · ⚠️ Lacking: overdue vs their usual gap · ❌ Not coming: 30+ days away (or 3× their usual gap)</div>
+  </div>
+  <div class="card"><div class="card-title">📋 Recent Truck Entries</div>
+    <div style="overflow-x:auto"><table class="rtable">
+      <thead><tr><th>Date</th><th>Truck</th><th>Customer</th><th>Driver</th><th>Fuel</th><th>Qty</th><th></th></tr></thead>
+      <tbody>${recentRows||'<tr><td colspan="7" style="text-align:center;color:var(--ink-light);padding:16px">No entries yet</td></tr>'}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function truckAutoFill(){
+  const t=gs('trk_truck').toUpperCase();
+  if(!t)return;
+  const e=truckData.slice().reverse().find(x=>String(x.truck||'').toUpperCase()===t);
+  if(!e)return;
+  const nm=document.getElementById('trk_name'),mb=document.getElementById('trk_mobile'),dr=document.getElementById('trk_driver');
+  if(nm&&!nm.value)nm.value=e.name||'';
+  if(mb&&!mb.value)mb.value=e.mobile||'';
+  if(dr&&!dr.value)dr.value=e.driver||'';
+}
+
+async function addTruckEntry(){
+  const truck=gs('trk_truck').toUpperCase();
+  const qty=gv('trk_qty');
+  if(!truck){alert('Enter truck number');return;}
+  if(!qty){alert('Enter fuel quantity');return;}
+  const mobile=gs('trk_mobile');
+  if(mobile&&!/^\d{10}$/.test(mobile)){alert('Mobile number must be 10 digits');return;}
+  truckData.push({
+    date:gs('trk_date')||todayKey0(),time:gs('trk_time'),truck,
+    name:gs('trk_name'),mobile,driver:gs('trk_driver'),
+    fuel:document.getElementById('trk_fuel').value,qty,
+    savedAt:new Date().toISOString()
+  });
+  await cloudSet(STORE_KEY_TRUCK,truckData);
+  renderTruckLog();
+  const el=document.getElementById('trkMsg');
+  if(el){el.textContent=`✅ Truck ${truck} logged!`;setTimeout(()=>el.textContent='',3000);}
+}
+
+async function removeTruckEntry(i){
+  if(!confirm('Remove this truck entry?'))return;
+  truckData.splice(i,1);
+  await cloudSet(STORE_KEY_TRUCK,truckData);
+  renderTruckLog();
+}
 
 // ── MODULE 6: CREDIT SALES ────────────────────────────────────────────────────
 // Canonical credit-party computation.
@@ -3147,8 +3319,8 @@ function renderOwnerStaff(fromDate='',toDate=''){
 async function resetAll(){
   if(!confirm('Delete ALL records permanently?'))return;if(!confirm('Cannot undo. Confirm?'))return;
   cloudData={records:[],prevClosing:{},prevBF:0,cumulative:{totalAdv:0,totalExp:0,totalMobil:0,totalDeposit:0,totalCS:0,parties:{},employees:{},expCats:{}}};
-  attData={};inspectData={};recvData=[];creditData=[];testingData=[];portfolioData={months:{}};ownerDeposits=[];
-  await saveCloud();await cloudSet(STORE_KEY_ATT,{});await cloudSet(STORE_KEY_INSPECT,{});await cloudSet(STORE_KEY_RECV,[]);await cloudSet(STORE_KEY_CREDIT,[]);await cloudSet(STORE_KEY_TESTING,[]);await cloudSet(STORE_KEY_PORTFOLIO,{months:{}});await cloudSet(DEPOSIT_KEY,[]);
+  attData={};inspectData={};recvData=[];creditData=[];testingData=[];portfolioData={months:{}};ownerDeposits=[];truckData=[];
+  await saveCloud();await cloudSet(STORE_KEY_ATT,{});await cloudSet(STORE_KEY_INSPECT,{});await cloudSet(STORE_KEY_RECV,[]);await cloudSet(STORE_KEY_CREDIT,[]);await cloudSet(STORE_KEY_TESTING,[]);await cloudSet(STORE_KEY_PORTFOLIO,{months:{}});await cloudSet(DEPOSIT_KEY,[]);await cloudSet(STORE_KEY_TRUCK,[]);
   alert('All data deleted.');renderOwnerReport();
 }
 
@@ -4153,27 +4325,26 @@ function buildAttendanceRecords(f,t2){
 function buildInspectionRecords(f,t2){
   const dates=Object.keys(inspectData).filter(d=>(!f||d>=f)&&d<=t2).sort((a,b)=>b.localeCompare(a));
   if(!dates.length)return`<div class="alert-warn">No inspection records in this range.</div>`;
+  const fuelCard=(ins,pfx,label,icon,bg,clr)=>{
+    if(ins[pfx+'Dip']==null||ins[pfx+'Dip']==='')return`<div style="padding:10px;background:${bg};border-radius:var(--r);opacity:.55"><div style="font-size:11px;font-weight:700;color:${clr};margin-bottom:8px">${icon} ${label}</div><div style="font-size:11px;color:var(--ink-light)">Not inspected this day</div></div>`;
+    const diff=ins[pfx+'Diff']!=null?Number(ins[pfx+'Diff']):((Number(ins[pfx+'Dip'])||0)-((Number(ins[pfx+'PrevDip'])||0)+(Number(ins[pfx+'Recv'])||0)-(Number(ins[pfx+'Sale'])||0)-(Number(ins[pfx+'Test'])||0)));
+    return`<div style="padding:10px;background:${bg};border-radius:var(--r)">
+      <div style="font-size:11px;font-weight:700;color:${clr};margin-bottom:8px">${icon} ${label}</div>
+      <div class="calc-row"><span class="calc-lbl">Prev Dip</span><span class="calc-val">${fmtL(ins[pfx+'PrevDip']||0)}</span></div>
+      <div class="calc-row"><span class="calc-lbl">Received</span><span class="calc-val">${fmtL(ins[pfx+'Recv']||0)}</span></div>
+      <div class="calc-row"><span class="calc-lbl">Net Sale</span><span class="calc-val">${fmtL(ins[pfx+'Sale']||0)}</span></div>
+      <div class="calc-row"><span class="calc-lbl">Testing</span><span class="calc-val">${fmtL(ins[pfx+'Test']||0)}</span></div>
+      <div class="calc-row"><span class="calc-lbl">Current Dip</span><span class="calc-val">${fmtL(ins[pfx+'Dip']||0)}</span></div>
+      <div class="calc-row" style="border-top:1px dashed var(--ioc-border);padding-top:6px;margin-top:4px"><span class="calc-lbl"><b>Variance</b></span><span class="calc-val" style="color:${Math.abs(diff)>5?'var(--ioc-red)':'var(--green)'}">${diff>=0?'+':''}${fmtL(diff)}</span></div>
+    </div>`;
+  };
   return dates.map(date=>{
     const ins=inspectData[date];
-    const hsdSale=Math.max(0,(ins.hsdDip||0)-(ins.hsdPrevDip||0)+(ins.hsdRecv||0));
-    const msSale=Math.max(0,(ins.msDip||0)-(ins.msPrevDip||0)+(ins.msRecv||0));
     return`<div class="card" style="border-left:3px solid var(--ioc-red);margin-bottom:10px">
       <div style="font-family:var(--font);font-size:15px;font-weight:700;color:var(--ioc-navy);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--ioc-border)">${new Date(date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</div>
       <div class="grid2">
-        <div style="padding:10px;background:var(--ioc-navy-light);border-radius:var(--r)">
-          <div style="font-size:11px;font-weight:700;color:var(--ioc-navy);margin-bottom:8px">🛢️ HSD Diesel</div>
-          <div class="calc-row"><span class="calc-lbl">Prev Dip</span><span class="calc-val">${fmtL(ins.hsdPrevDip||0)}</span></div>
-          <div class="calc-row"><span class="calc-lbl">Received</span><span class="calc-val">${fmtL(ins.hsdRecv||0)}</span></div>
-          <div class="calc-row"><span class="calc-lbl">Current Dip</span><span class="calc-val">${fmtL(ins.hsdDip||0)}</span></div>
-          <div class="calc-row" style="border-top:1px dashed var(--ioc-border);padding-top:6px;margin-top:4px"><span class="calc-lbl"><b>Diff</b></span><span class="calc-val" style="color:${Math.abs((ins.hsdDip||0)-(ins.hsdPrevDip||0)+(ins.hsdRecv||0))>5?'var(--ioc-red)':'var(--green)'}">${fmtL((ins.hsdDip||0)-((ins.hsdPrevDip||0)+(ins.hsdRecv||0)))}</span></div>
-        </div>
-        <div style="padding:10px;background:var(--ioc-red-light);border-radius:var(--r)">
-          <div style="font-size:11px;font-weight:700;color:var(--ioc-red);margin-bottom:8px">⛽ MS Petrol</div>
-          <div class="calc-row"><span class="calc-lbl">Prev Dip</span><span class="calc-val">${fmtL(ins.msPrevDip||0)}</span></div>
-          <div class="calc-row"><span class="calc-lbl">Received</span><span class="calc-val">${fmtL(ins.msRecv||0)}</span></div>
-          <div class="calc-row"><span class="calc-lbl">Current Dip</span><span class="calc-val">${fmtL(ins.msDip||0)}</span></div>
-          <div class="calc-row" style="border-top:1px dashed rgba(208,30,30,.2);padding-top:6px;margin-top:4px"><span class="calc-lbl"><b>Diff</b></span><span class="calc-val" style="color:${Math.abs((ins.msDip||0)-((ins.msPrevDip||0)+(ins.msRecv||0)))>5?'var(--ioc-red)':'var(--green)'}">${fmtL((ins.msDip||0)-((ins.msPrevDip||0)+(ins.msRecv||0)))}</span></div>
-        </div>
+        ${fuelCard(ins,'hsd','HSD Diesel','🛢️','var(--ioc-navy-light)','var(--ioc-navy)')}
+        ${fuelCard(ins,'ms','MS Petrol','⛽','var(--ioc-red-light)','var(--ioc-red)')}
       </div>
       ${ins.savedAt?`<div style="font-size:10px;color:var(--ink-light);margin-top:8px;text-align:right">Saved: ${new Date(ins.savedAt).toLocaleString('en-IN')}</div>`:''}
     </div>`;
