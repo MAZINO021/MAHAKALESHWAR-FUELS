@@ -203,6 +203,39 @@ input:focus{border-color:var(--ioc-red);box-shadow:0 0 0 2px rgba(208,30,30,.1);
 .mod-name{font-size:14px;font-weight:700;color:var(--ioc-navy);line-height:1.2}
 .mod-desc{font-size:12px;color:var(--ink-light);line-height:1.35}
 @media(max-width:360px){.mod-grid{grid-template-columns:1fr}}
+
+/* ── OWNER DASHBOARD ───────────────────────────────────────────────────────── */
+.dash-h{display:flex;align-items:center;gap:8px;font-family:var(--font);font-size:15px;font-weight:600;color:var(--ioc-navy);letter-spacing:.01em}
+.dash-h .ic{width:18px;height:18px;color:var(--ioc-red)}
+.chart-block{background:#fff;border:1px solid var(--ioc-border);border-radius:var(--r);padding:12px 10px 6px}
+.chart-head{display:flex;align-items:center;gap:8px;margin-bottom:2px;padding:0 4px}
+.chart-sub{font-size:11px;color:var(--ink-light)}
+/* Stat cards */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.stat{position:relative;padding:14px 15px;background:#fff;border:1px solid var(--ioc-border);border-radius:var(--rl);overflow:hidden}
+.stat::before{content:'';position:absolute;top:0;left:0;bottom:0;width:3px;background:var(--accent-c,var(--ioc-navy))}
+.stat-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.stat-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-light)}
+.stat-ico{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--ioc-navy-light);color:var(--accent-c,var(--ioc-navy))}
+.stat-ico .ic{width:15px;height:15px}
+.stat-val{font-family:var(--font);font-size:22px;font-weight:700;color:var(--ink);line-height:1.1}
+.stat-sub{font-size:10px;color:var(--ink-light);margin-top:3px}
+/* Owner nav cards */
+.onav-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.onav{display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-height:118px;padding:16px;background:#fff;border:1px solid var(--ioc-border);border-radius:var(--rl);cursor:pointer;text-align:left;font-family:var(--ui);position:relative;overflow:hidden;transition:border-color .18s,box-shadow .18s,transform .12s;-webkit-tap-highlight-color:transparent}
+.onav::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--ioc-red);transform:scaleX(0);transform-origin:left;transition:transform .22s ease}
+.onav:hover,.onav:focus-visible{border-color:var(--ioc-border-strong);box-shadow:0 6px 20px rgba(6,16,64,.1);outline:none}
+.onav:hover::before,.onav:focus-visible::before{transform:scaleX(1)}
+.onav:active{transform:translateY(1px)}
+.onav-ico{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:var(--ioc-navy-light);color:var(--ioc-navy)}
+.onav-ico .ic{width:21px;height:21px}
+.onav:hover .onav-ico,.onav:focus-visible .onav-ico{background:var(--ioc-red-light);color:var(--ioc-red)}
+.onav-name{font-size:15px;font-weight:700;color:var(--ioc-navy);line-height:1.15}
+.onav-desc{font-size:11px;color:var(--ink-light);line-height:1.35}
+.onav-wide{grid-column:1/-1;flex-direction:row;align-items:center;min-height:0}
+.alert-row{display:flex;align-items:flex-start;gap:8px;padding:9px 12px;background:#FFF5F5;border-left:3px solid var(--ioc-red);border-radius:0 var(--r) var(--r) 0;font-size:12px;color:var(--ioc-red-dark);font-weight:500;margin-bottom:6px}
+.alert-row .ic{width:15px;height:15px;flex-shrink:0;margin-top:1px;color:var(--ioc-red)}
+@media(max-width:360px){.stat-grid,.onav-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -717,6 +750,8 @@ async function saveCloud(){
 // ── UTILS ─────────────────────────────────────────────────────────────────────
 function todayKey0(){return new Date().toISOString().slice(0,10);}
 function fmt(n){return Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});}
+// Whole rupees, no paise — for dashboard glance tiles.
+function fmt0(n){return Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});}
 function fmtL(n){return Number(n||0).toFixed(2)+' L';}
 function gv(id){return parseFloat(document.getElementById(id)?.value)||0;}
 function gs(id){return document.getElementById(id)?.value?.trim()||'';}
@@ -2377,111 +2412,136 @@ function showCreditParty(name,pObj){
   det.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
+// ── MINI BAR CHART (inline SVG, no library, offline-safe) ────────────────────
+// series: [{label, value}]. Compact bars with value labels above, day labels below;
+// latest bar in the full brand colour, earlier bars muted. Colours must be literal
+// (SVG presentation attributes don't resolve CSS var()). muted/axis are hex.
+function barMiniChart(series,color,accent){
+  const W=328,H=132,padT=20,padB=18, MUTED='#4A5880', AXIS='#D0D8EE';
+  const plotH=H-padT-padB;
+  const n=series.length;
+  const max=Math.max(1,...series.map(s=>s.value));
+  const slot=W/n, bw=Math.min(30,slot*0.62);
+  const kfmt=v=>v>=1000?(v/1000).toFixed(v>=10000?0:1)+'k':String(Math.round(v));
+  const bars=series.map((s,i)=>{
+    const h=Math.max(2,(s.value/max)*plotH);
+    const x=i*slot+(slot-bw)/2, y=padT+(plotH-h);
+    const last=i===n-1;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${last?color:accent}"/>
+      <text x="${(x+bw/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="${last?color:MUTED}" font-family="DM Sans,sans-serif">${s.value>0?kfmt(s.value):''}</text>
+      <text x="${(x+bw/2).toFixed(1)}" y="${(H-5).toFixed(1)}" text-anchor="middle" font-size="9" fill="${MUTED}" font-family="DM Sans,sans-serif">${s.label}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" preserveAspectRatio="xMidYMid meet" style="display:block">
+    <line x1="0" y1="${(padT+plotH+0.5).toFixed(1)}" x2="${W}" y2="${(padT+plotH+0.5).toFixed(1)}" stroke="${AXIS}" stroke-width="1"/>
+    ${bars}
+  </svg>`;
+}
+
+// The 7-day sales card: HSD and MS shown separately (different scales).
+function sevenDaySalesCard(){
+  const recs=[...cloudData.records].filter(r=>r&&r.date).sort((a,b)=>a.date.localeCompare(b.date)).slice(-7);
+  if(recs.length<1){
+    return `<div class="card"><div class="dash-h">${ic('trend')}<span>Last 7 Days</span></div>
+      <div style="color:var(--ink-light);font-size:12px;text-align:center;padding:16px">No sales records yet.</div></div>`;
+  }
+  const mk=fld=>recs.map(r=>({label:new Date(r.date+'T00:00:00').getDate(),value:Math.round(r[fld]||0)}));
+  const hsd=mk('hsdNet'), ms=mk('msNet');
+  const hTot=hsd.reduce((a,s)=>a+s.value,0), mTot=ms.reduce((a,s)=>a+s.value,0);
+  const hAvg=Math.round(hTot/recs.length), mAvg=Math.round(mTot/recs.length);
+  const sub=(tot,avg)=>`<span style="color:var(--ink)">${fmt(tot).replace('.00','')} L</span> total · avg ${fmt(avg).replace('.00','')} L/day`;
+  return `
+  <div class="card">
+    <div class="dash-h" style="margin-bottom:14px">${ic('trend')}<span>Last 7 Days — Litres Sold</span></div>
+    <div class="chart-block">
+      <div class="chart-head"><span class="tag tag-hsd">HSD</span><span class="chart-sub">${sub(hTot,hAvg)}</span></div>
+      ${barMiniChart(hsd,'#0A1F5C','rgba(10,31,92,.28)')}
+    </div>
+    <div class="chart-block" style="margin-top:16px">
+      <div class="chart-head"><span class="tag tag-ms">MS</span><span class="chart-sub">${sub(mTot,mAvg)}</span></div>
+      ${barMiniChart(ms,'#D01E1E','rgba(208,30,30,.24)')}
+    </div>
+  </div>`;
+}
+
 // ── OWNER REPORT ──────────────────────────────────────────────────────────────
 function renderOwnerReport(){
   // Always reset to main dashboard view
   const tc=document.getElementById('ownerTabContent');
   if(tc)tc.innerHTML='';
-  document.getElementById('ownerReport').innerHTML=`
-  ${(()=>{
-    const recs=cloudData.records;
-    const today=new Date().toISOString().slice(0,10);
-    const ms2=new Date();ms2.setDate(1);const mStart=ms2.toISOString().slice(0,10);
-    const mRecs=recs.filter(r=>r.date>=mStart&&r.date<=today);
-    const todayRec=recs.find(r=>r.date===today);
-    const mHSD=mRecs.reduce((a,r)=>a+(r.hsdNet||0),0);
-    const mMS=mRecs.reduce((a,r)=>a+(r.msNet||0),0);
-    const mFuel=mRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
-    const mProfit=mRecs.reduce((a,r)=>a+(r.netProfit||0),0);
-    const mCash=mRecs.reduce((a,r)=>a+(r.finalCash||0),0);
-    const lastBF=cloudData.prevBF||0;
-    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">
-      <div style="padding:12px 14px;background:linear-gradient(135deg,#0A1F5C,#1a3a7c);border-radius:var(--rl);color:#fff">
-        <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.05em">Today's BF</div>
-        <div style="font-size:18px;font-weight:700;margin-top:3px">₹${fmt(lastBF)}</div>
-        <div style="font-size:10px;opacity:.6;margin-top:2px">${today}</div>
-      </div>
-      <div style="padding:12px 14px;background:linear-gradient(135deg,#1A6614,#2d9e24);border-radius:var(--rl);color:#fff">
-        <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.05em">Month Profit</div>
-        <div style="font-size:18px;font-weight:700;margin-top:3px">₹${fmt(mProfit)}</div>
-        <div style="font-size:10px;opacity:.6;margin-top:2px">${mRecs.length} days</div>
-      </div>
-      <div style="padding:12px 14px;background:linear-gradient(135deg,#8B1A1A,#C2185B);border-radius:var(--rl);color:#fff">
-        <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.05em">Month Fuel</div>
-        <div style="font-size:16px;font-weight:700;margin-top:3px">₹${fmt(mFuel)}</div>
-        <div style="font-size:10px;opacity:.6;margin-top:2px">HSD ${mHSD.toFixed(0)}L · MS ${mMS.toFixed(0)}L</div>
-      </div>
-      <div style="padding:12px 14px;background:linear-gradient(135deg,#5C4A00,#a07800);border-radius:var(--rl);color:#fff">
-        <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.05em">Records</div>
-        <div style="font-size:18px;font-weight:700;margin-top:3px">${recs.length}</div>
-        <div style="font-size:10px;opacity:.6;margin-top:2px">Total days</div>
-      </div>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-size:12px;color:var(--ink-light)">📊 ${mRecs.length} records this month</div>
-      <button onclick="refreshOwnerData()" style="padding:6px 12px;background:var(--ioc-navy-light);border:1px solid var(--ioc-border);border-radius:var(--r);font-size:11px;font-weight:600;color:var(--ioc-navy);cursor:pointer;font-family:var(--ui)">🔄 Refresh</button>
+  const today=new Date().toISOString().slice(0,10);
+  const recs=cloudData.records;
+  const mStart=(()=>{const d=new Date();d.setDate(1);return d.toISOString().slice(0,10);})();
+  const mRecs=recs.filter(r=>r.date>=mStart&&r.date<=today);
+  const mHSD=mRecs.reduce((a,r)=>a+(r.hsdNet||0),0);
+  const mMS=mRecs.reduce((a,r)=>a+(r.msNet||0),0);
+  const mFuel=mRecs.reduce((a,r)=>a+(r.fuelTotal||0),0);
+  const mProfit=mRecs.reduce((a,r)=>a+(r.netProfit||0),0);
+  const lastBF=cloudData.prevBF||0;
+  const profitPos=mProfit>=0;
+
+  const stat=(lbl,icon,val,sub,accent)=>`
+    <div class="stat" style="--accent-c:${accent}">
+      <div class="stat-top"><span class="stat-lbl">${lbl}</span><span class="stat-ico">${ic(icon)}</span></div>
+      <div class="stat-val">${val}</div>
+      <div class="stat-sub">${sub}</div>
     </div>`;
-  })()}
-  <div id="ownerModuleSelect" class="card">
-    <div class="card-title">👑 Owner Dashboard</div>
+
+  const OWNER_NAV=[
+    {id:'reports',icon:'chart',name:'Reports',desc:'Profit · Portfolio · Staff · Credit'},
+    {id:'growth',icon:'trend',name:'Growth Analysis',desc:'Day · Month · Year · Custom range'},
+    {id:'deposit',icon:'wallet',name:'Deposits',desc:'Bank · IOC · Paytm · Cash'},
+    {id:'testingprofit',icon:'flask',name:'Testing Profit',desc:'Income from testing sold'},
+  ];
+
+  document.getElementById('ownerReport').innerHTML=`
+   <div id="ownerModuleSelect">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="dash-h">${ic('crown')}<span>Owner Dashboard</span></div>
+      <button class="btn-secondary" onclick="refreshOwnerData()" style="padding:7px 13px;font-size:12px;gap:6px">${ic('refresh')} Refresh</button>
+    </div>
+
     ${(()=>{
       const alerts=[];
-      const today=new Date().toISOString().slice(0,10);
-      const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);const yStr=yesterday.toISOString().slice(0,10);
-      // Missing yesterday's record
-      if(!cloudData.records.find(r=>r.date===yStr)&&new Date().getHours()>10){
-        alerts.push(`⚠️ No sales record for yesterday (${yStr})`);
-      }
-      // Outstanding credit — use canonical computation (matches Credit tab)
+      const yStr=(()=>{const d=new Date();d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})();
+      if(!recs.find(r=>r.date===yStr)&&new Date().getHours()>10)
+        alerts.push({ic:'calendar',t:`No sales record for yesterday (${yStr})`});
       const cp=computeCreditParties();
       const outstanding=Object.values(cp).filter(v=>v.credit-v.paid>0);
       const totalOut=outstanding.reduce((a,v)=>a+(v.credit-v.paid),0);
-      if(totalOut>0)alerts.push(`💳 Outstanding credit: ₹${Number(totalOut).toLocaleString('en-IN')} from ${outstanding.length} parties`);
-      // Inspection variance
+      if(totalOut>0)alerts.push({ic:'ledger',t:`Outstanding credit ₹${Number(totalOut).toLocaleString('en-IN')} from ${outstanding.length} parties`});
       const lastInsp=Object.entries(inspectData).sort((a,b)=>b[0].localeCompare(a[0]))[0];
-      if(lastInsp&&(Math.abs(lastInsp[1].hsdDiff||0)>5||Math.abs(lastInsp[1].msDiff||0)>5)){
-        alerts.push(`🛢️ Stock variance detected on ${lastInsp[0]} — HSD: ${(lastInsp[1].hsdDiff||0).toFixed(1)}L MS: ${(lastInsp[1].msDiff||0).toFixed(1)}L`);
-      }
+      if(lastInsp&&(Math.abs(lastInsp[1].hsdDiff||0)>inspTol('HSD')||Math.abs(lastInsp[1].msDiff||0)>inspTol('MS')))
+        alerts.push({ic:'gauge',t:`Stock variance on ${lastInsp[0]} — HSD ${(lastInsp[1].hsdDiff||0).toFixed(1)}L · MS ${(lastInsp[1].msDiff||0).toFixed(1)}L`});
       if(!alerts.length)return'';
-      return`<div style="margin-bottom:14px">${alerts.map(a=>`<div style="padding:8px 12px;background:#FFF5F5;border-left:3px solid var(--ioc-red);border-radius:0 var(--r) var(--r) 0;font-size:12px;color:var(--ioc-red);font-weight:500;margin-bottom:6px">${a}</div>`).join('')}</div>`;
+      return`<div style="margin-bottom:14px">${alerts.map(a=>`<div class="alert-row">${ic(a.ic)}<span>${a.t}</span></div>`).join('')}</div>`;
     })()}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" id="ownerModuleGrid">
-      <button onclick="openOwnerTab('reports')" style="padding:22px 16px;background:var(--ioc-navy-light);border:1.5px solid var(--ioc-border);border-radius:var(--rl);cursor:pointer;text-align:left;transition:all .2s;font-family:var(--ui)" onmouseover="this.style.borderColor='var(--ioc-red)';this.style.background='#FFF5F5'" onmouseout="this.style.borderColor='var(--ioc-border)';this.style.background='var(--ioc-navy-light)'">
-        <div style="font-size:28px;margin-bottom:10px">📊</div>
-        <div style="font-size:14px;font-weight:700;color:var(--ioc-navy)">Option 1</div>
-        <div style="font-size:16px;font-weight:700;color:var(--ioc-navy);margin-top:2px">Reports</div>
-        <div style="font-size:11px;color:var(--ink-light);margin-top:4px">Profit · Portfolio · Staff · Credit</div>
-      </button>
-      <button onclick="openOwnerTab('growth')" style="padding:22px 16px;background:var(--ioc-navy-light);border:1.5px solid var(--ioc-border);border-radius:var(--rl);cursor:pointer;text-align:left;transition:all .2s;font-family:var(--ui)" onmouseover="this.style.borderColor='var(--ioc-red)';this.style.background='#FFF5F5'" onmouseout="this.style.borderColor='var(--ioc-border)';this.style.background='var(--ioc-navy-light)'">
-        <div style="font-size:28px;margin-bottom:10px">📈</div>
-        <div style="font-size:14px;font-weight:700;color:var(--ioc-navy)">Option 2</div>
-        <div style="font-size:16px;font-weight:700;color:var(--ioc-navy);margin-top:2px">Growth Analysis</div>
-        <div style="font-size:11px;color:var(--ink-light);margin-top:4px">Day · Month · Year · Custom range</div>
-      </button>
-      <button onclick="openOwnerTab('deposit')" style="padding:22px 16px;background:var(--ioc-navy-light);border:1.5px solid var(--ioc-border);border-radius:var(--rl);cursor:pointer;text-align:left;transition:all .2s;font-family:var(--ui)" onmouseover="this.style.borderColor='var(--ioc-red)';this.style.background='#FFF5F5'" onmouseout="this.style.borderColor='var(--ioc-border)';this.style.background='var(--ioc-navy-light)'">
-        <div style="font-size:28px;margin-bottom:10px">💰</div>
-        <div style="font-size:14px;font-weight:700;color:var(--ioc-navy)">Option 3</div>
-        <div style="font-size:16px;font-weight:700;color:var(--ioc-navy);margin-top:2px">Deposit / Withdrawal</div>
-        <div style="font-size:11px;color:var(--ink-light);margin-top:4px">Bank · IOC · Paytm · Cash entries</div>
-      </button>
-      <button onclick="openOwnerTab('testingprofit')" style="padding:22px 16px;background:var(--ioc-navy-light);border:1.5px solid var(--ioc-border);border-radius:var(--rl);cursor:pointer;text-align:left;transition:all .2s;font-family:var(--ui)" onmouseover="this.style.borderColor='var(--ioc-red)';this.style.background='#FFF5F5'" onmouseout="this.style.borderColor='var(--ioc-border)';this.style.background='var(--ioc-navy-light)'">
-        <div style="font-size:28px;margin-bottom:10px">🧪</div>
-        <div style="font-size:14px;font-weight:700;color:var(--ioc-navy)">Option 4</div>
-        <div style="font-size:16px;font-weight:700;color:var(--ioc-navy);margin-top:2px">Testing Sold Profit</div>
-        <div style="font-size:11px;color:var(--ink-light);margin-top:4px">Income from testing sold entries</div>
-      </button>
-      <button onclick="openOwnerTab('fullrecords')" style="padding:22px 16px;background:linear-gradient(135deg,#0A1F5C10,#D01E1E08);border:1.5px solid var(--ioc-red);border-radius:var(--rl);cursor:pointer;text-align:left;transition:all .2s;font-family:var(--ui);grid-column:1/-1" onmouseover="this.style.background='#FFF0F0'" onmouseout="this.style.background='linear-gradient(135deg,#0A1F5C10,#D01E1E08)'">
-        <div style="display:flex;align-items:center;gap:14px">
-          <div style="font-size:36px">📋</div>
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--ioc-red)">Option 5</div>
-            <div style="font-size:18px;font-weight:700;color:var(--ioc-navy);margin-top:2px">Full Manager Records</div>
-            <div style="font-size:11px;color:var(--ink-light);margin-top:4px">Every daily entry · Nozzle-wise · All deductions · Advances · Expenses · Attendance · Inspection · Testing · Received · Credit</div>
-          </div>
-        </div>
+
+    <div class="stat-grid">
+      ${stat("Today's BF",'wallet','₹'+fmt0(lastBF),today,'var(--ioc-navy)')}
+      ${stat('Month Profit','trend',(profitPos?'':'−')+'₹'+fmt0(Math.abs(mProfit)),mRecs.length+' days',profitPos?'var(--green)':'var(--ioc-red)')}
+      ${stat('Month Fuel','fuel','₹'+fmt0(mFuel),'HSD '+mHSD.toFixed(0)+'L · MS '+mMS.toFixed(0)+'L','var(--ioc-navy)')}
+      ${stat('Records','calendar',String(recs.length),'total days','var(--ioc-navy)')}
+    </div>
+
+    ${sevenDaySalesCard()}
+
+    <div style="margin:16px 0 10px 2px" class="dash-h"><span>Explore</span></div>
+    <div class="onav-grid">
+      ${OWNER_NAV.map(o=>`
+        <button class="onav" onclick="openOwnerTab('${o.id}')" aria-label="${o.name} — ${o.desc}">
+          <span class="onav-ico">${ic(o.icon)}</span>
+          <span class="onav-name">${o.name}</span>
+          <span class="onav-desc">${o.desc}</span>
+        </button>`).join('')}
+      <button class="onav onav-wide" onclick="openOwnerTab('fullrecords')" aria-label="Full Manager Records — every daily entry">
+        <span class="onav-ico">${ic('ledger')}</span>
+        <span style="flex:1">
+          <span class="onav-name" style="display:block">Full Manager Records</span>
+          <span class="onav-desc" style="display:block;margin-top:3px">Every daily entry · nozzle-wise · all deductions, advances & expenses</span>
+        </span>
       </button>
     </div>
-  </div>
+   </div>
   <div id="ownerTabContent" style="display:none"></div>`;
 }
 
