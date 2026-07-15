@@ -429,8 +429,7 @@ const USERS={manager:{id:'Manager_0626',pass:'Manager@2121'},owner:{id:'Aditya_2
 const STORE_KEY='mf_main',STORE_KEY_CUM='mf_cumulative',STORE_KEY_ATT='mf_attendance',
       STORE_KEY_INSPECT='mf_inspection',STORE_KEY_RECV='mf_received',STORE_KEY_CREDIT='mf_credit',
       STORE_KEY_STAFF='mf_staff',STORE_KEY_PORTFOLIO='mf_portfolio',STORE_KEY_TESTING='mf_testing',
-      DEPOSIT_KEY='mf_owner_deposits',STORE_KEY_TRUCK='mf_trucklog',STORE_KEY_RECON='mf_recon',
-      STORE_KEY_SETTINGS='mf_settings';
+      DEPOSIT_KEY='mf_owner_deposits',STORE_KEY_TRUCK='mf_trucklog',STORE_KEY_RECON='mf_recon';
 const NOZZLES_HSD=['H1','H2','H3','H4','H5','H6','H7','H8'];
 const NOZZLES_MS=['M1','M2','M3','M4'];
 const DEFAULT_STAFF=['BHOJU YADAV','BRIJESH TIWARI','ASHOK YADAV','MANOJ KUMAR','GULAB YADAV',
@@ -439,12 +438,11 @@ const DEFAULT_STAFF=['BHOJU YADAV','BRIJESH TIWARI','ASHOK YADAV','MANOJ KUMAR',
 const HSD_DAY0=[380,326,459,519,333,336,379,336];
 const MS_DAY0=[340,299,433,389];
 const HSD_MARGIN=2.5, MS_MARGIN=3.9;
-// ── Variance tolerance (owner-editable, stored in mf_settings) ───────────────
-// Litres. A flat ±5 L on a ~23,000 L tank is ±0.02% — unreachable, so every day
-// reads red. Defaults are ≈0.5% of each tank's working volume.
-const DEFAULT_SETTINGS={
-  tolDaily:{hsd:115, ms:60}    // one-day variance (previous dip → today)
-};
+// ── Cumulative-check anchors (from owner's register down-block, verified 01/07/2026) ──
+// expected stock = OM + received − (meters − Day0 − cumulativeTesting)
+const CUM_ANCHOR='2026-07-01';                 // first day of register tracking
+const CUM_OM={hsd:1564000, ms:695000};         // OM baseline (total stock ever available) at anchor
+const CUM_TEST0={hsd:19175, ms:9410};          // cumulative TANK testing just BEFORE anchor day
 // ── CREDIT LEDGER BASE — owner's recon "Total Outstanding Amount.xlsx" (14/07/2026) ──
 // Each account STARTS at its recon amount. Only credits/deposits dated on or after
 // CREDIT_BASE_DATE move the balance (balance = base + credit − deposit). Older app
@@ -511,7 +509,6 @@ let currentUser=null,currentRole=null,selectedRole=null;
 let staffList=[...DEFAULT_STAFF];
 let cloudData={records:[],prevClosing:{},prevBF:0,cumulative:{totalAdv:0,totalExp:0,totalMobil:0,totalDeposit:0,totalCS:0,parties:{},employees:{},expCats:{}}};
 let attData={},inspectData={},recvData=[],creditData=[],testingData=[],portfolioData={months:{}},ownerDeposits=[],truckData=[],reconData=null;
-let appSettings=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
 let draft={},mobilItems=[],depositItems=[],advItems=[],creditSaleItems=[],pumpExpItems=[];
 let currentStep=0,currentModule=null;
 // Attendance date selector (default today)
@@ -551,23 +548,6 @@ async function cloudSet(k,v){
 
 function preloadFirebaseScripts(){return Promise.resolve();}
 
-// Fold a stored settings blob onto the defaults so a missing/garbage key can never
-// produce a zero tolerance (which would flag every single day red).
-function mergeSettings(s){
-  const out=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
-  ['tolDaily'].forEach(grp=>{
-    ['hsd','ms'].forEach(f=>{
-      const v=Number(s&&s[grp]&&s[grp][f]);
-      if(Number.isFinite(v)&&v>0)out[grp][f]=v;
-    });
-  });
-  return out;
-}
-// Tolerance in litres for the daily dip check.
-function inspTol(fuel){
-  return appSettings.tolDaily[fuel==='HSD'?'hsd':'ms'];
-}
-
 function syncStatus(s,m){const dot=document.getElementById('syncDot'),txt=document.getElementById('syncMsg');if(dot)dot.className='sync-dot '+s;if(txt)txt.textContent=m;}
 
 // Make every record safe for date operations. Records with a valid date pass through.
@@ -601,7 +581,6 @@ async function loadCloud(){
     const depO=await cloudGet(DEPOSIT_KEY);if(depO)ownerDeposits=depO;
     const trk=await cloudGet(STORE_KEY_TRUCK);if(trk)truckData=trk;
     const rcn=await cloudGet(STORE_KEY_RECON);if(rcn){reconData=rcn;_creditAliasMap=null;}
-    const st=await cloudGet(STORE_KEY_SETTINGS);if(st)appSettings=mergeSettings(st);
     if(cloudData.records.length>0){
       syncStatus('ok','☁️ Firebase connected');
     } else {
@@ -1356,9 +1335,12 @@ function renderInspection(){
           <div style="font-size:11px;color:var(--ink-light);margin-top:2px">Daily tank check</div>
         </button>
       </div>
+      <button onclick="renderInspCumulative()" style="width:100%;padding:14px 10px;border:2px solid var(--ioc-border-strong);border-radius:var(--rl);background:#fff;cursor:pointer;font-family:var(--ui);text-align:center">
+        <div style="font-size:13px;font-weight:700;color:var(--ink)">📊 Cumulative Check — From Starting Meters (Day 0)</div>
+        <div style="font-size:11px;color:var(--ink-light);margin-top:2px">Total pumped since beginning vs received vs current stock</div>
+      </button>
     </div>
-    ${inspHistoryCard()}
-    ${inspSettingsCard()}`;
+    ${inspHistoryCard()}`;
 }
 
 function startInspection(fuel){
@@ -1377,24 +1359,12 @@ function inspAuto(date,fuel){
     .filter(([d,v])=>d<date&&v&&v[pfx+'Dip']!=null&&v[pfx+'Dip']!=='')
     .sort((a,b)=>b[0].localeCompare(a[0]))[0];
   const prevDate=prevEntry?prevEntry[0]:null;
-  // No earlier inspection, but this day may already have been saved with a manually
-  // entered opening stock — read it back. Without this, re-opening the first-ever
-  // inspection shows a blank opening and re-saving zeroes it, destroying the variance.
-  const savedPrev=inspectData[date]?inspectData[date][pfx+'PrevDip']:null;
-  const prevDip=prevEntry?(Number(prevEntry[1][pfx+'Dip'])||0)
-    :((savedPrev!=null&&savedPrev!=='')?(Number(savedPrev)||0):null);
+  const prevDip=prevEntry?(Number(prevEntry[1][pfx+'Dip'])||0):null;
   // Range of days to account for: (prevDate, date]. First-ever inspection → just `date`.
   const inRange=d=>prevDate?(d>prevDate&&d<=date):(d===date);
   const saleRecs=cloudData.records.filter(r=>inRange(r.date));
   const sale=saleRecs.reduce((a,r)=>a+((pfx==='hsd'?r.hsdNet:r.msNet)||0),0);
-  // Receipts: the Received module (recvData) is the intended source, but in practice
-  // the qty is typed straight into this form and saved onto the inspection. Read both
-  // and take the larger — one delivery can sit in both places, so summing would double
-  // count, and reading only recvData showed 0 and wiped the delivery on re-save.
-  const recvModule=recvData.filter(r=>inRange(r.date)&&r.fuel===fuel).reduce((a,r)=>a+(Number(r.qty)||0),0);
-  const recvSaved=Object.entries(inspectData).filter(([d])=>inRange(d))
-    .reduce((a,[,v])=>a+(Number(v&&v[pfx+'Recv'])||0),0);
-  const recv=Math.max(recvModule,recvSaved);
+  const recv=recvData.filter(r=>inRange(r.date)&&r.fuel===fuel).reduce((a,r)=>a+(Number(r.qty)||0),0);
   const test=testingData.filter(t=>inRange(t.date)&&t.fuel===fuel).reduce((a,t)=>a+(Number(t.qty)||0),0);
   const hasRec=cloudData.records.some(r=>r.date===date);
   return{pfx,sale,recv,test,prevDate,prevDip,hasRec,saleDays:saleRecs.length};
@@ -1404,7 +1374,7 @@ function renderInspectionForm(){
   const fuel=inspFuel,a=inspAuto(inspDate,fuel);
   const saved=inspectData[inspDate]||{};
   const savedDip=saved[a.pfx+'Dip'];
-  const firstTime=a.prevDate==null;
+  const firstTime=a.prevDip==null;
   const tagCls=fuel==='HSD'?'tag-hsd':'tag-ms';
   const clr=fuel==='HSD'?'var(--ioc-navy)':'var(--ioc-red)';
   const bg=fuel==='HSD'?'var(--ioc-navy-light)':'var(--ioc-red-light)';
@@ -1427,7 +1397,7 @@ function renderInspectionForm(){
     </div>
     ${firstTime?`<div class="field" style="margin-bottom:12px">
       <div class="lbl">First ${fuel} inspection — enter opening stock / dip (L)</div>
-      <input type="number" id="insp_prevdip_manual" step="0.01" value="${a.prevDip!=null?a.prevDip:''}" placeholder="Stock in tank before today" oninput="inspLive()">
+      <input type="number" id="insp_prevdip_manual" step="0.01" placeholder="Stock in tank before today" oninput="inspLive()">
       <div style="font-size:11px;color:var(--ink-light);margin-top:3px">Only needed once — future inspections load this automatically.</div>
     </div>`:''}
     <div class="field" style="margin-bottom:12px">
@@ -1457,8 +1427,7 @@ function inspCalcNow(){
   const dipEl=document.getElementById('insp_dip');
   const hasDip=dipEl&&dipEl.value!=='';
   const dip=gv('insp_dip');
-  const tol=inspTol(inspFuel);
-  return{a,prevDip,recv,sale,expected,hasDip,dip,tol,diff:dip-expected,ok:Math.abs(dip-expected)<=tol};
+  return{a,prevDip,recv,sale,expected,hasDip,dip,diff:dip-expected,ok:Math.abs(dip-expected)<=5};
 }
 
 function inspLive(){
@@ -1471,7 +1440,7 @@ function inspLive(){
   el.innerHTML=`
     <div style="padding:12px 14px;border-radius:var(--r);background:${c.ok?'#f0fff4':'var(--ioc-red-light)'};border-left:3px solid ${c.ok?'var(--green)':'var(--ioc-red)'}">
       <div style="font-size:13px;font-weight:700;color:${c.ok?'var(--green)':'var(--ioc-red)'};margin-bottom:4px">${inspFuel}: ${c.ok?'✅ STOCK OK':'⚠️ VARIANCE DETECTED'}</div>
-      <div style="font-size:11px;color:var(--ink)">Expected <b>${fmtL(c.expected)}</b> | Actual <b>${fmtL(c.dip)}</b> | Difference <b style="color:${c.ok?'var(--green)':'var(--ioc-red)'}">${c.diff>=0?'+':''}${fmtL(c.diff)}</b> <span style="color:var(--ink-light)">(tolerance ±${fmtL(c.tol)})</span></div>
+      <div style="font-size:11px;color:var(--ink)">Expected <b>${fmtL(c.expected)}</b> | Actual <b>${fmtL(c.dip)}</b> | Difference <b style="color:${c.ok?'var(--green)':'var(--ioc-red)'}">${c.diff>=0?'+':''}${fmtL(c.diff)}</b> <span style="color:var(--ink-light)">(tolerance ±5 L)</span></div>
     </div>`;
 }
 
@@ -1479,7 +1448,7 @@ async function saveInspection(){
   const dipEl=document.getElementById('insp_dip');
   if(!dipEl||dipEl.value===''){alert("Enter today's dip reading first");return;}
   const c=inspCalcNow();
-  if(c.a.prevDate==null&&(!document.getElementById('insp_prevdip_manual')||document.getElementById('insp_prevdip_manual').value==='')){
+  if(c.a.prevDip==null&&(!document.getElementById('insp_prevdip_manual')||document.getElementById('insp_prevdip_manual').value==='')){
     alert('Enter the opening stock (first inspection)');return;
   }
   const e=inspectData[inspDate]||{};
@@ -1496,56 +1465,81 @@ async function saveInspection(){
   if(el){el.textContent=`✅ ${inspFuel} inspection saved for ${inspDate}! Variance: ${c.diff>=0?'+':''}${fmtL(c.diff)}`;setTimeout(()=>el.textContent='',4000);}
 }
 
-// Owner-only tolerance settings. Managers can see the limits but not move them —
-// otherwise the person being checked controls the threshold that flags him.
-function inspSettingsCard(){
-  const ro=currentRole!=='owner';
-  const row=(lbl,id,val)=>`
-    <div class="field">
-      <div class="lbl">${lbl}</div>
-      <input type="number" id="${id}" value="${val}" step="1" min="1"${ro?' disabled style="background:#f2f4f9;color:var(--ink-light);cursor:not-allowed"':''}>
-      <div style="font-size:10px;color:var(--ink-light);margin-top:2px">Previous dip → today</div>
+// ── CUMULATIVE CHECK FROM DAY 0 STARTING METERS ──────────────────────────────
+function renderInspCumulative(){
+  document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="renderInspection()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
+
+  const fuelBlock=(fuel)=>{
+    const pfx=fuel==='HSD'?'hsd':'ms';
+    const nozzles=fuel==='HSD'?NOZZLES_HSD:NOZZLES_MS;
+    const day0=fuel==='HSD'?HSD_DAY0:MS_DAY0;
+    const clr=fuel==='HSD'?'var(--ioc-navy)':'var(--ioc-red)';
+    const bg=fuel==='HSD'?'var(--ioc-navy-light)':'var(--ioc-red-light)';
+    // Meter-based total pumped since Day 0
+    let pumped=0;
+    const nozRows=nozzles.map((n,i)=>{
+      const start=day0[i]||0;
+      const cur=Number(cloudData.prevClosing[n])||0;
+      const p=cur>start?cur-start:0;
+      pumped+=p;
+      return`<tr><td>${n}</td><td class="right">${start.toFixed(2)}</td><td class="right">${cur>0?cur.toFixed(2):'—'}</td><td class="right"><b>${p.toFixed(2)} L</b></td></tr>`;
+    }).join('');
+    // Records-based totals
+    const totalSales=cloudData.records.reduce((a,r)=>a+(r[pfx+'Net']||0),0);
+    let totalRecv=recvData.filter(r=>r.fuel===fuel).reduce((a,r)=>a+(Number(r.qty)||0),0);
+    if(!totalRecv)totalRecv=Object.values(inspectData).reduce((a,v)=>a+(v[pfx+'Recv']||0),0);
+    const totalTest=testingData.filter(t=>t.fuel===fuel).reduce((a,t)=>a+(Number(t.qty)||0),0);
+    // Lifetime reconciliation from first inspection
+    const inspDates=Object.keys(inspectData).filter(d=>inspectData[d]&&inspectData[d][pfx+'Dip']!=null&&inspectData[d][pfx+'Dip']!=='').sort();
+    let recon='';
+    if(inspDates.length){
+      const firstD=inspDates[0],lastD=inspDates[inspDates.length-1];
+      const firstDip=Number(inspectData[firstD][pfx+'PrevDip']!=null?inspectData[firstD][pfx+'PrevDip']:inspectData[firstD][pfx+'Dip'])||0;
+      const recvSince=recvData.filter(r=>r.fuel===fuel&&r.date>firstD).reduce((a,r)=>a+(Number(r.qty)||0),0);
+      const salesSince=cloudData.records.filter(r=>r.date>firstD&&r.date<=lastD).reduce((a,r)=>a+(r[pfx+'Net']||0),0);
+      const testSince=testingData.filter(t=>t.fuel===fuel&&t.date>firstD&&t.date<=lastD).reduce((a,t)=>a+(Number(t.qty)||0),0);
+      // Net sale already excludes testing, so don't subtract testing again
+      const expectedNow=firstDip+recvSince-salesSince;
+      const lastDip=Number(inspectData[lastD][pfx+'Dip'])||0;
+      const lifeDiff=lastDip-expectedNow;
+      const lifeOk=Math.abs(lifeDiff)<=10;
+      recon=`
+      <div style="margin-top:10px;padding:10px 12px;background:#fff;border:1px solid var(--ioc-border);border-radius:var(--r)">
+        <div style="font-size:11px;font-weight:700;color:${clr};margin-bottom:6px">🧮 Lifetime Reconciliation (dip ${firstD} → ${lastD})</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0"><span>Opening stock (dip ${firstD})</span><b>${fmtL(firstDip)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:var(--green)"><span>+ Received since</span><b>+${fmtL(recvSince)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:var(--ioc-red)"><span>− Net Sales since</span><b>−${fmtL(salesSince)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;padding:1px 0;color:var(--ink-light)"><span>Testing ${fmtL(testSince)} — already inside net sales</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;padding:4px 0;border-top:1px solid var(--ioc-border);margin-top:3px"><span>Expected stock now</span><b>${fmtL(expectedNow)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;padding:2px 0"><span>Latest dip (${lastD})</span><b>${fmtL(lastDip)}</b></div>
+        <div style="text-align:center;font-size:12px;font-weight:700;padding:6px;border-radius:var(--r);background:${lifeOk?'var(--green)':'var(--ioc-red)'};color:#fff;margin-top:6px">${lifeOk?'✅':'⚠️'} Lifetime variance: ${lifeDiff>=0?'+':''}${fmtL(lifeDiff)}</div>
+      </div>`;
+    }else{
+      recon=`<div style="margin-top:10px;font-size:11px;color:var(--ink-light)">No ${fuel} inspection saved yet — save one to see lifetime reconciliation.</div>`;
+    }
+    const meterVsRec=pumped-totalSales;
+    return`
+    <div class="card">
+      <div class="card-title"><span class="tag ${fuel==='HSD'?'tag-hsd':'tag-ms'}">${fuel}</span> Cumulative — From Starting Meters</div>
+      <div style="overflow-x:auto"><table class="rtable">
+        <thead><tr><th>Nozzle</th><th class="right">Day 0 Start</th><th class="right">Current Meter</th><th class="right">Pumped</th></tr></thead>
+        <tbody>${nozRows}</tbody>
+      </table></div>
+      <div style="padding:12px;background:${bg};border-radius:var(--r);margin-top:10px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Total pumped by meters (since Day 0)</span><b>${fmtL(pumped)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Total net sales recorded</span><b>${fmtL(totalSales)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Meter − Records difference</span><b style="color:${Math.abs(meterVsRec)<=10?'var(--green)':'var(--ioc-red)'}">${meterVsRec>=0?'+':''}${fmtL(meterVsRec)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Total received</span><b>${fmtL(totalRecv)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Total testing</span><b>${fmtL(totalTest)}</b></div>
+      </div>
+      ${recon}
     </div>`;
-  return`
-  <div class="card">
-    <div class="card-title">⚙️ Variance Tolerance${ro?' <span style="font-size:11px;font-weight:400;color:var(--ink-light)">— owner only</span>':''}</div>
-    <div class="alert-info" style="margin-bottom:12px">Litres. A day inside the limit shows green. The old fixed ±5 L was ±0.02% of a 23,000 L tank — unreachable in practice, so every day read red. Defaults here are ≈0.5% of tank volume.</div>
-    <div class="grid2" style="margin-bottom:10px">
-      ${row('HSD limit (L)','set_tol_d_hsd',inspTol('HSD'))}
-      ${row('MS limit (L)','set_tol_d_ms',inspTol('MS'))}
-    </div>
-    ${ro?'':`<div class="btn-row" style="margin-top:0">
-      <button class="btn-primary" onclick="saveInspSettings()">💾 Save Tolerance</button>
-      <button class="btn-secondary" onclick="resetInspSettings()">↺ Restore defaults</button>
-    </div>
-    <div id="setMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>`}
-  </div>`;
-}
-
-function _setMsg(t){
-  const el=document.getElementById('setMsg');
-  if(!el)return;
-  el.textContent=t;
-  setTimeout(()=>{const e=document.getElementById('setMsg');if(e)e.textContent='';},3000);
-}
-
-async function saveInspSettings(){
-  // A blank or zero limit would paint every day red — fall back to the default.
-  const read=(id,fb)=>{const v=parseFloat(document.getElementById(id)?.value);return Number.isFinite(v)&&v>0?v:fb;};
-  appSettings={
-    tolDaily:{hsd:read('set_tol_d_hsd',DEFAULT_SETTINGS.tolDaily.hsd),ms:read('set_tol_d_ms',DEFAULT_SETTINGS.tolDaily.ms)}
   };
-  const ok=await cloudSet(STORE_KEY_SETTINGS,appSettings);
-  renderInspection();
-  _setMsg(ok?'✅ Tolerance saved & synced.':'⚠️ Save failed — check connection.');
-}
 
-async function resetInspSettings(){
-  if(!confirm('Restore the default tolerances?'))return;
-  appSettings=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
-  await cloudSet(STORE_KEY_SETTINGS,appSettings);
-  renderInspection();
-  _setMsg('✅ Defaults restored.');
+  document.getElementById('stepContent').innerHTML=`
+    <div class="alert-info" style="margin-bottom:12px">📊 Lifetime stock check — replicates your register's down-block: fuel available (OM + received) vs fuel that left the tank (meters − Day-0 − tank testing), compared to the current dip. Tank testing returns to the tank; self-use counts as sold.</div>
+    ${fuelBlock('HSD')}
+    ${fuelBlock('MS')}`;
 }
 
 // Shared recent-history card (both fuels)
@@ -1554,9 +1548,9 @@ function inspHistoryCard(){
     <tr>
       <td>${date}</td>
       <td>${d.hsdDip!=null&&d.hsdDip!==''?fmtL(d.hsdDip):'—'}</td>
-      <td style="color:${Math.abs(d.hsdDiff||0)>inspTol('HSD')?'var(--ioc-red)':'var(--green)'};font-weight:600">${d.hsdDiff!=null?(d.hsdDiff>0?'+':'')+Number(d.hsdDiff).toFixed(2)+' L':'—'}</td>
+      <td style="color:${Math.abs(d.hsdDiff||0)>5?'var(--ioc-red)':'var(--green)'};font-weight:600">${d.hsdDiff!=null?(d.hsdDiff>0?'+':'')+Number(d.hsdDiff).toFixed(2)+' L':'—'}</td>
       <td>${d.msDip!=null&&d.msDip!==''?fmtL(d.msDip):'—'}</td>
-      <td style="color:${Math.abs(d.msDiff||0)>inspTol('MS')?'var(--ioc-red)':'var(--green)'};font-weight:600">${d.msDiff!=null?(d.msDiff>0?'+':'')+Number(d.msDiff).toFixed(2)+' L':'—'}</td>
+      <td style="color:${Math.abs(d.msDiff||0)>5?'var(--ioc-red)':'var(--green)'};font-weight:600">${d.msDiff!=null?(d.msDiff>0?'+':'')+Number(d.msDiff).toFixed(2)+' L':'—'}</td>
     </tr>`).join('');
   return`
   <div class="card">
