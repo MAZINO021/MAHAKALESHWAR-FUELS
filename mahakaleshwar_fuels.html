@@ -439,11 +439,20 @@ const DEFAULT_STAFF=['BHOJU YADAV','BRIJESH TIWARI','ASHOK YADAV','MANOJ KUMAR',
 const HSD_DAY0=[380,326,459,519,333,336,379,336];
 const MS_DAY0=[340,299,433,389];
 const HSD_MARGIN=2.5, MS_MARGIN=3.9;
-// ── Variance tolerance (owner-editable, stored in mf_settings) ───────────────
+// ── Running drift base — owner's handwritten register, 14/07/2026 ────────────
+// His register closed its cumulative check at +192 L HSD / −531 L MS. That is the
+// opening balance of the running total; every daily variance dated AFTER 14/07 is
+// added to it. The daily check re-anchors to the physical dip each morning and so
+// forgets yesterday — this carries the small ±10s forward instead of losing them.
+// Verified 15/07/2026: the register's own figures reproduce to the litre.
+const DRIFT_BASE={date:'2026-07-14', hsd:192, ms:-531};
+
+// ── Variance tolerances (owner-editable, stored in mf_settings) ──────────────
 // Litres. A flat ±5 L on a ~23,000 L tank is ±0.02% — unreachable, so every day
 // reads red. Defaults are ≈0.5% of each tank's working volume.
 const DEFAULT_SETTINGS={
-  tolDaily:{hsd:115, ms:60}    // one-day variance (previous dip → today)
+  tolDaily:{hsd:115, ms:60},   // one-day variance (previous dip → today)
+  tolDrift:{hsd:300, ms:150}   // running total carried from DRIFT_BASE
 };
 // ── CREDIT LEDGER BASE — owner's recon "Total Outstanding Amount.xlsx" (14/07/2026) ──
 // Each account STARTS at its recon amount. Only credits/deposits dated on or after
@@ -555,7 +564,7 @@ function preloadFirebaseScripts(){return Promise.resolve();}
 // produce a zero tolerance (which would flag every single day red).
 function mergeSettings(s){
   const out=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
-  ['tolDaily'].forEach(grp=>{
+  ['tolDaily','tolDrift'].forEach(grp=>{
     ['hsd','ms'].forEach(f=>{
       const v=Number(s&&s[grp]&&s[grp][f]);
       if(Number.isFinite(v)&&v>0)out[grp][f]=v;
@@ -563,9 +572,31 @@ function mergeSettings(s){
   });
   return out;
 }
-// Tolerance in litres for the daily dip check.
-function inspTol(fuel){
-  return appSettings.tolDaily[fuel==='HSD'?'hsd':'ms'];
+// Tolerance in litres. kind: 'daily' (one day) or 'drift' (running total).
+function inspTol(fuel,kind){
+  const f=fuel==='HSD'?'hsd':'ms';
+  return (kind==='drift'?appSettings.tolDrift:appSettings.tolDaily)[f];
+}
+
+// Running total = the register's 14/07 closing figure + every daily variance since.
+// Only inspections dated strictly after DRIFT_BASE.date count — 14/07 and earlier
+// are already baked into the base, so counting them again would double up.
+// opts.date/opts.diff = an entry being typed but not yet saved; it REPLACES that
+// day's stored variance rather than stacking a second copy on top.
+function driftTotal(fuel,opts){
+  const pfx=fuel==='HSD'?'hsd':'ms';
+  const o=opts||{};
+  const end=o.upto||todayKey0();
+  const seen={};
+  Object.keys(inspectData).forEach(d=>{
+    if(d<=DRIFT_BASE.date||d>end)return;
+    const v=inspectData[d]?inspectData[d][pfx+'Diff']:null;
+    if(v!=null&&v!=='')seen[d]=Number(v)||0;
+  });
+  if(o.date&&o.date>DRIFT_BASE.date&&o.date<=end)seen[o.date]=Number(o.diff)||0;
+  let total=DRIFT_BASE[pfx];
+  Object.values(seen).forEach(v=>{total+=v;});
+  return{total:+total.toFixed(2), days:Object.keys(seen).length, base:DRIFT_BASE[pfx]};
 }
 
 function syncStatus(s,m){const dot=document.getElementById('syncDot'),txt=document.getElementById('syncMsg');if(dot)dot.className='sync-dot '+s;if(txt)txt.textContent=m;}
@@ -1357,6 +1388,7 @@ function renderInspection(){
         </button>
       </div>
     </div>
+    ${driftCard()}
     ${inspHistoryCard()}
     ${inspSettingsCard()}`;
 }
@@ -1468,10 +1500,19 @@ function inspLive(){
   const el=document.getElementById('insp_live');
   if(!el)return;
   if(!c.hasDip){el.innerHTML='';return;}
+  const after=driftTotal(inspFuel,{date:inspDate,diff:c.diff}).total;
+  const dTol=inspTol(inspFuel,'drift');
+  const dOk=Math.abs(after)<=dTol;
+  const counted=inspDate>DRIFT_BASE.date;
   el.innerHTML=`
     <div style="padding:12px 14px;border-radius:var(--r);background:${c.ok?'#f0fff4':'var(--ioc-red-light)'};border-left:3px solid ${c.ok?'var(--green)':'var(--ioc-red)'}">
       <div style="font-size:13px;font-weight:700;color:${c.ok?'var(--green)':'var(--ioc-red)'};margin-bottom:4px">${inspFuel}: ${c.ok?'✅ STOCK OK':'⚠️ VARIANCE DETECTED'}</div>
       <div style="font-size:11px;color:var(--ink)">Expected <b>${fmtL(c.expected)}</b> | Actual <b>${fmtL(c.dip)}</b> | Difference <b style="color:${c.ok?'var(--green)':'var(--ioc-red)'}">${c.diff>=0?'+':''}${fmtL(c.diff)}</b> <span style="color:var(--ink-light)">(tolerance ±${fmtL(c.tol)})</span></div>
+    </div>
+    <div style="margin-top:8px;padding:10px 14px;border-radius:var(--r);background:${dOk?'var(--ioc-navy-light)':'var(--ioc-red-light)'};border-left:3px solid ${dOk?'var(--ioc-navy)':'var(--ioc-red)'}">
+      ${counted
+        ?`<div style="font-size:12px;color:var(--ink)">📉 Running total after saving: <b style="color:${dOk?'var(--green)':'var(--ioc-red)'};font-size:14px">${after>=0?'+':''}${fmtL(after)}</b> <span style="color:var(--ink-light)">(limit ±${fmtL(dTol)})</span>${dOk?'':' <b style="color:var(--ioc-red)">— OVER</b>'}</div>`
+        :`<div style="font-size:12px;color:var(--ink-light)">📉 ${inspDate} is on or before the ${DRIFT_BASE.date} register base, so it is already inside the running total and won't be added again.</div>`}
     </div>`;
 }
 
@@ -1500,19 +1541,21 @@ async function saveInspection(){
 // otherwise the person being checked controls the threshold that flags him.
 function inspSettingsCard(){
   const ro=currentRole!=='owner';
-  const row=(lbl,id,val)=>`
+  const row=(lbl,id,val,hint)=>`
     <div class="field">
       <div class="lbl">${lbl}</div>
       <input type="number" id="${id}" value="${val}" step="1" min="1"${ro?' disabled style="background:#f2f4f9;color:var(--ink-light);cursor:not-allowed"':''}>
-      <div style="font-size:10px;color:var(--ink-light);margin-top:2px">Previous dip → today</div>
+      <div style="font-size:10px;color:var(--ink-light);margin-top:2px">${hint}</div>
     </div>`;
   return`
   <div class="card">
-    <div class="card-title">⚙️ Variance Tolerance${ro?' <span style="font-size:11px;font-weight:400;color:var(--ink-light)">— owner only</span>':''}</div>
-    <div class="alert-info" style="margin-bottom:12px">Litres. A day inside the limit shows green. The old fixed ±5 L was ±0.02% of a 23,000 L tank — unreachable in practice, so every day read red. Defaults here are ≈0.5% of tank volume.</div>
+    <div class="card-title">⚙️ Variance Tolerances${ro?' <span style="font-size:11px;font-weight:400;color:var(--ink-light)">— owner only</span>':''}</div>
+    <div class="alert-info" style="margin-bottom:12px">Litres. Inside the limit shows green. The old fixed ±5 L was ±0.02% of a 23,000 L tank — unreachable in practice, so every day read red. Defaults here are ≈0.5% of tank volume.</div>
     <div class="grid2" style="margin-bottom:10px">
-      ${row('HSD limit (L)','set_tol_d_hsd',inspTol('HSD'))}
-      ${row('MS limit (L)','set_tol_d_ms',inspTol('MS'))}
+      ${row('HSD — daily limit (L)','set_tol_d_hsd',inspTol('HSD','daily'),'One day: previous dip → today')}
+      ${row('MS — daily limit (L)','set_tol_d_ms',inspTol('MS','daily'),'One day: previous dip → today')}
+      ${row('HSD — running total limit (L)','set_tol_r_hsd',inspTol('HSD','drift'),'Total carried since '+DRIFT_BASE.date)}
+      ${row('MS — running total limit (L)','set_tol_r_ms',inspTol('MS','drift'),'Total carried since '+DRIFT_BASE.date)}
     </div>
     ${ro?'':`<div class="btn-row" style="margin-top:0">
       <button class="btn-primary" onclick="saveInspSettings()">💾 Save Tolerance</button>
@@ -1533,7 +1576,8 @@ async function saveInspSettings(){
   // A blank or zero limit would paint every day red — fall back to the default.
   const read=(id,fb)=>{const v=parseFloat(document.getElementById(id)?.value);return Number.isFinite(v)&&v>0?v:fb;};
   appSettings={
-    tolDaily:{hsd:read('set_tol_d_hsd',DEFAULT_SETTINGS.tolDaily.hsd),ms:read('set_tol_d_ms',DEFAULT_SETTINGS.tolDaily.ms)}
+    tolDaily:{hsd:read('set_tol_d_hsd',DEFAULT_SETTINGS.tolDaily.hsd),ms:read('set_tol_d_ms',DEFAULT_SETTINGS.tolDaily.ms)},
+    tolDrift:{hsd:read('set_tol_r_hsd',DEFAULT_SETTINGS.tolDrift.hsd),ms:read('set_tol_r_ms',DEFAULT_SETTINGS.tolDrift.ms)}
   };
   const ok=await cloudSet(STORE_KEY_SETTINGS,appSettings);
   renderInspection();
@@ -1546,6 +1590,29 @@ async function resetInspSettings(){
   await cloudSet(STORE_KEY_SETTINGS,appSettings);
   renderInspection();
   _setMsg('✅ Defaults restored.');
+}
+
+// The running total — the number that actually catches a slow leak.
+function driftCard(){
+  const block=fuel=>{
+    const d=driftTotal(fuel);
+    const tol=inspTol(fuel,'drift');
+    const ok=Math.abs(d.total)<=tol;
+    const clr=fuel==='HSD'?'var(--ioc-navy)':'var(--ioc-red)';
+    return`
+    <div style="padding:14px;background:#fff;border:1px solid var(--ioc-border);border-left:3px solid ${ok?'var(--green)':'var(--ioc-red)'};border-radius:var(--r)">
+      <div style="font-size:11px;font-weight:700;color:${clr};margin-bottom:6px"><span class="tag ${fuel==='HSD'?'tag-hsd':'tag-ms'}">${fuel}</span> Running Total</div>
+      <div style="font-family:var(--font);font-size:26px;font-weight:700;color:${ok?'var(--green)':'var(--ioc-red)'}">${d.total>=0?'+':''}${fmtL(d.total)}</div>
+      <div style="font-size:11px;color:var(--ink-light);margin-top:4px">${d.base>=0?'+':''}${fmtL(d.base)} at ${DRIFT_BASE.date}${d.days?' · '+d.days+' day'+(d.days>1?'s':'')+' added since':' · nothing added yet'}</div>
+      <div style="font-size:10px;color:${ok?'var(--ink-light)':'var(--ioc-red)'};margin-top:2px;font-weight:${ok?'400':'700'}">${ok?'within':'OVER'} limit ±${fmtL(tol)}</div>
+    </div>`;
+  };
+  return`
+  <div class="card">
+    <div class="card-title">📉 Running Total — carried from your ${DRIFT_BASE.date} register</div>
+    <div class="alert-info" style="margin-bottom:12px">Opens at your register's closing figures (<b>+192 L HSD</b> / <b>−531 L MS</b>) and adds each day's variance on top. The daily check re-anchors to the dip every morning and forgets yesterday — this doesn't. A slow leak shows up here even when every single day looks fine on its own.</div>
+    <div class="grid2">${block('HSD')}${block('MS')}</div>
+  </div>`;
 }
 
 // Shared recent-history card (both fuels)
