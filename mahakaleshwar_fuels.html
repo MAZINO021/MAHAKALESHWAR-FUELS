@@ -401,7 +401,8 @@ input:focus{border-color:var(--ioc-red);box-shadow:0 0 0 2px rgba(208,30,30,.1);
 <div id="managerView">
   <!-- Module selector -->
   <div id="moduleSelect" style="margin-bottom:12px">
-    <div style="font-family:var(--font);font-size:15px;font-weight:600;color:rgba(255,255,255,.85);margin-bottom:12px;padding:0 2px;letter-spacing:.01em">Select a module</div>
+    <div id="mgrChart"></div>
+    <div style="font-family:var(--font);font-size:15px;font-weight:600;color:rgba(255,255,255,.85);margin:16px 0 12px;padding:0 2px;letter-spacing:.01em">Select a module</div>
     <div class="mod-grid" id="moduleGrid"></div>
   </div>
   <!-- Active module content -->
@@ -829,6 +830,9 @@ function renderModuleSelect(){
   document.getElementById('moduleSelect').style.display='';
   document.getElementById('moduleContent').style.display='none';
   currentModule=null;
+  // Litres only — no money, no profit. Safe for the manager's home screen.
+  const mc=document.getElementById('mgrChart');
+  if(mc)mc.innerHTML=sevenDaySalesCard();
   document.getElementById('moduleGrid').className='mod-grid';
   document.getElementById('moduleGrid').innerHTML=MANAGER_MODULES.map(m=>`
     <button class="mod-card" onclick="openModule('${m.id}')" aria-label="${m.label} — ${m.desc}">
@@ -3805,12 +3809,17 @@ function renderCalendar(){
   for(let i=0;i<firstDay;i++)cells+=`<div style="min-height:62px"></div>`;
   for(let d=1;d<=dim;d++){
     const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const rec=recMap[ds],isToday=ds===today,profit=rec?(rec.netProfit||0):0;
-    const bg=isToday?'var(--ioc-red-light)':rec?(profit>=0?'rgba(29,107,58,0.1)':'rgba(208,30,30,0.08)'):'transparent';
-    const border=isToday?'var(--ioc-red)':rec?(profit>=0?'rgba(29,107,58,0.5)':'rgba(208,30,30,0.4)'):'var(--ioc-border)';
+    const rec=recMap[ds],isToday=ds===today;
+    // Profit is owner-only. Colouring a manager's calendar green/red by profit sign
+    // leaks it just as surely as printing the number, so managers get neutral navy.
+    const showP=currentRole==='owner';
+    const good=currentRole==='owner'?((rec?(rec.netProfit||0):0)>=0):false;
+    const bg=isToday?'var(--ioc-red-light)':rec?(showP?(good?'rgba(29,107,58,0.1)':'rgba(208,30,30,0.08)'):'var(--ioc-navy-light)'):'transparent';
+    const border=isToday?'var(--ioc-red)':rec?(showP?(good?'rgba(29,107,58,0.5)':'rgba(208,30,30,0.4)'):'var(--ioc-border-strong)'):'var(--ioc-border)';
+    const cashClr=showP?(good?'var(--green)':'var(--ioc-red)'):'var(--ioc-navy)';
     cells+=`<div onclick="${rec?`showHistDetailByDate('${ds}')`:''}" style="min-height:62px;border-radius:6px;border:1.5px solid ${border};padding:5px;cursor:${rec?'pointer':'default'};background:${bg};position:relative">
       <div style="font-size:11px;font-weight:700;color:${isToday?'var(--ioc-red)':rec?'var(--ioc-navy)':'var(--ink-light)'}">${d}</div>
-      ${rec?`<div style="font-size:9px;font-weight:700;color:${profit>=0?'var(--green)':'var(--ioc-red)'}">₹${shortFmt(rec.finalCash)}</div><div style="font-size:8px;color:var(--ink-light)">${(rec.hsdNet||0).toFixed(0)}+${(rec.msNet||0).toFixed(0)}L</div><div style="position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:${profit>=0?'var(--green)':'var(--ioc-red)'}"></div>`:''}
+      ${rec?`<div style="font-size:9px;font-weight:700;color:${cashClr}">₹${shortFmt(rec.finalCash)}</div><div style="font-size:8px;color:var(--ink-light)">${(rec.hsdNet||0).toFixed(0)}+${(rec.msNet||0).toFixed(0)}L</div>${showP?`<div style="position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:${good?'var(--green)':'var(--ioc-red)'}"></div>`:''}`:''}
     </div>`;
   }
   const grid=document.getElementById('calGrid');if(grid)grid.innerHTML=cells;
@@ -3872,7 +3881,7 @@ function showHistDetail(i){
       <div style="text-align:right">
         <div style="font-size:10px;color:rgba(255,255,255,.5)">Final Cash in Hand</div>
         <div style="font-family:var(--font);font-size:26px;font-weight:700;color:#fff">₹${fmt(d.finalCash)}</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:3px">Est. Profit: ₹${fmt(d.netProfit||0)}</div>
+        ${currentRole==='owner'?`<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:3px">Est. Profit: ₹${fmt(d.netProfit||0)}</div>`:''}
       </div>
     </div>
 
