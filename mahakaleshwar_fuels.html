@@ -797,7 +797,7 @@ const MANAGER_MODULES=[
   {id:'received',icon:'truck-in',label:'Total Received',desc:'MS & HSD stock received'},
   {id:'creditsales',icon:'ledger',label:'Credit Sales',desc:'Party-wise credit ledger'},
   {id:'trucklog',icon:'route',label:'Truck Log',desc:'Daily trucks & customer tracking'},
-  {id:'offers',icon:'offer',label:'Offer Panel',desc:'HSD cashback · ग्राहक उपहार योजना'},
+  {id:'offers',icon:'offer',label:'Offer Panel',desc:'HSD customer cashback scheme'},
 ];
 // Render an icon from the sprite. name = id without the "i-" prefix.
 function ic(name,cls){return `<svg class="ic${cls?' '+cls:''}" aria-hidden="true"><use href="#i-${name}"/></svg>`;}
@@ -1161,8 +1161,8 @@ function offRenderIndex(){
   <div class="card" style="background:linear-gradient(135deg,#0A1F5C,#1A2F6E);color:#fff;border:none">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div>
-        <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.6)">रोपनी सीज़न विशेष</div>
-        <div style="font-family:var(--font);font-size:20px;font-weight:700">ग्राहक उपहार योजना</div>
+        <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.6)">Ropni Season Special</div>
+        <div style="font-family:var(--font);font-size:20px;font-weight:700">Customer Cashback Scheme</div>
         <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px">HSD Cashback · ${OFFER_WINDOW.start} → ${offEnd()}</div>
       </div>
       <span style="background:${stColor};color:#fff;font-size:10px;font-weight:700;padding:4px 9px;border-radius:20px;white-space:nowrap">${status.toUpperCase()}</span>
