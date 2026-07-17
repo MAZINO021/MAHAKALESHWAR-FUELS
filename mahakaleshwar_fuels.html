@@ -453,6 +453,7 @@ input:focus{border-color:var(--ioc-red);box-shadow:0 0 0 2px rgba(208,30,30,.1);
     <g id="i-logout" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></g>
     <g id="i-trend" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></g>
     <g id="i-settings" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></g>
+    <g id="i-offer" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></g>
   </defs>
 </svg>
 <div class="bg-img"></div>
@@ -698,7 +699,22 @@ const STORE_KEY='mf_main',STORE_KEY_CUM='mf_cumulative',STORE_KEY_ATT='mf_attend
       STORE_KEY_INSPECT='mf_inspection',STORE_KEY_RECV='mf_received',STORE_KEY_CREDIT='mf_credit',
       STORE_KEY_STAFF='mf_staff',STORE_KEY_PORTFOLIO='mf_portfolio',STORE_KEY_TESTING='mf_testing',
       DEPOSIT_KEY='mf_owner_deposits',STORE_KEY_TRUCK='mf_trucklog',STORE_KEY_RECON='mf_recon',
-      STORE_KEY_SETTINGS='mf_settings';
+      STORE_KEY_SETTINGS='mf_settings',STORE_KEY_OFFERS='mf_offers',STORE_KEY_OFFERSET='mf_offer_settings';
+// ── OFFER PANEL — रोपनी सीज़न विशेष · ग्राहक उपहार योजना (HSD cashback) ─────────
+// Slabs are FIXED (owner can only extend the end date). Cashback for an entry =
+// that entry's own litres × the slab rate its litres fall into — NEVER combined
+// across entries (50 L + 101 L are two separate slabs, not one 151 L slab).
+const OFFER_SLABS=[
+  {min:10,  max:50,       rate:0.20},
+  {min:51,  max:100,      rate:0.25},
+  {min:101, max:150,      rate:0.30},
+  {min:151, max:200,      rate:0.35},
+  {min:201, max:Infinity, rate:0.40}
+];
+const OFFER_MIN_L=10;                 // below this → not eligible
+const OFFER_EDIT_CODE='7566';         // owner-only code to edit an already-settled amount
+const OFFER_VTYPES=['Truck','Trailer','Tractor','Thresher','Gallon','Other']; // no pump-set, no car
+const OFFER_WINDOW={start:'2026-07-20', end:'2026-08-10'}; // default end; owner-extendable via mf_offer_settings
 const NOZZLES_HSD=['H1','H2','H3','H4','H5','H6','H7','H8'];
 const NOZZLES_MS=['M1','M2','M3','M4'];
 const DEFAULT_STAFF=['BHOJU YADAV','BRIJESH TIWARI','ASHOK YADAV','MANOJ KUMAR','GULAB YADAV',
@@ -781,6 +797,7 @@ const MANAGER_MODULES=[
   {id:'received',icon:'truck-in',label:'Total Received',desc:'MS & HSD stock received'},
   {id:'creditsales',icon:'ledger',label:'Credit Sales',desc:'Party-wise credit ledger'},
   {id:'trucklog',icon:'route',label:'Truck Log',desc:'Daily trucks & customer tracking'},
+  {id:'offers',icon:'offer',label:'Offer Panel',desc:'HSD cashback · ग्राहक उपहार योजना'},
 ];
 // Render an icon from the sprite. name = id without the "i-" prefix.
 function ic(name,cls){return `<svg class="ic${cls?' '+cls:''}" aria-hidden="true"><use href="#i-${name}"/></svg>`;}
@@ -790,8 +807,9 @@ let currentUser=null,currentRole=null,selectedRole=null;
 let staffList=[...DEFAULT_STAFF];
 let cloudData={records:[],prevClosing:{},prevBF:0,cumulative:{totalAdv:0,totalExp:0,totalMobil:0,totalDeposit:0,totalCS:0,parties:{},employees:{},expCats:{}}};
 let attData={},inspectData={},recvData=[],creditData=[],testingData=[],portfolioData={months:{}},ownerDeposits=[],truckData=[],reconData=null;
+let offersData={},offerSettings=null;   // offersData keyed by roll number; offerSettings holds owner-extended end date
 let appSettings=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
-let draft={},mobilItems=[],depositItems=[],advItems=[],creditSaleItems=[],pumpExpItems=[];
+let draft={},mobilItems=[],depositItems=[],advItems=[],creditSaleItems=[],pumpExpItems=[],offerPaidItems=[];
 let currentStep=0,currentModule=null;
 // Attendance date selector (default today)
 let attSelectedDate=todayKey0();
@@ -826,6 +844,23 @@ async function cloudSet(k,v){
     console.warn('Firebase SET failed, using localStorage:',e.message);
     try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e2){return false;}
   }
+}
+
+// Granular writes — PATCH merges only the keys given, POST/DELETE touch one child.
+// Used by the Offer Panel so two managers appending different slips never clobber
+// each other (unlike the whole-object PUT above). Each mutation also refreshes the
+// localStorage cache of the whole offers blob for offline reads.
+async function cloudPatch(path,obj){
+  try{
+    const res=await fetch(`${FB_URL}/${path}.json`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)});
+    return res.ok;
+  }catch(e){console.warn('Firebase PATCH failed:',e.message);return false;}
+}
+async function cloudDel(path){
+  try{
+    const res=await fetch(`${FB_URL}/${path}.json`,{method:'DELETE'});
+    return res.ok;
+  }catch(e){console.warn('Firebase DELETE failed:',e.message);return false;}
 }
 
 function preloadFirebaseScripts(){return Promise.resolve();}
@@ -901,6 +936,8 @@ async function loadCloud(){
     const test=await cloudGet(STORE_KEY_TESTING);if(test)testingData=test;
     const depO=await cloudGet(DEPOSIT_KEY);if(depO)ownerDeposits=depO;
     const trk=await cloudGet(STORE_KEY_TRUCK);if(trk)truckData=trk;
+    const off=await cloudGet(STORE_KEY_OFFERS);offersData=(off&&typeof off==='object'&&!Array.isArray(off))?off:{};
+    const offs=await cloudGet(STORE_KEY_OFFERSET);if(offs&&typeof offs==='object')offerSettings=offs;
     const vAl=await cloudGet('mf_vehicle_aliases'),vPh=await cloudGet('mf_vehicle_phones'),vCa=await cloudGet('mf_vehicle_calls');
     if(window.VR&&VR.hydrate)VR.hydrate(vAl,vPh,vCa);
     const rcn=await cloudGet(STORE_KEY_RECON);if(rcn){reconData=rcn;_creditAliasMap=null;}
@@ -924,6 +961,8 @@ async function loadCloud(){
       const cred=JSON.parse(localStorage.getItem(STORE_KEY_CREDIT)||'null');if(cred)creditData=cred;
       const depO=JSON.parse(localStorage.getItem(DEPOSIT_KEY)||'null');if(depO)ownerDeposits=depO;
       const trk=JSON.parse(localStorage.getItem(STORE_KEY_TRUCK)||'null');if(trk)truckData=trk;
+      const off=JSON.parse(localStorage.getItem(STORE_KEY_OFFERS)||'null');offersData=(off&&typeof off==='object'&&!Array.isArray(off))?off:{};
+      const offs=JSON.parse(localStorage.getItem(STORE_KEY_OFFERSET)||'null');if(offs&&typeof offs==='object')offerSettings=offs;
       const rcn=JSON.parse(localStorage.getItem(STORE_KEY_RECON)||'null');if(rcn){reconData=rcn;_creditAliasMap=null;}
       syncStatus('err','⚠️ Offline — using cached data. Tap to retry.');
     }catch(e2){
@@ -982,7 +1021,7 @@ function doLogout(){
   currentUser=null;currentRole=null;selectedRole=null;
   document.getElementById('loginScreen').style.display='';document.getElementById('mainApp').style.display='none';
   document.getElementById('roleSelect').style.display='';document.getElementById('loginForm').style.display='none';
-  draft={};mobilItems=[];depositItems=[];advItems=[];creditSaleItems=[];pumpExpItems=[];currentModule=null;
+  draft={};mobilItems=[];depositItems=[];advItems=[];creditSaleItems=[];pumpExpItems=[];offerPaidItems=[];currentModule=null;
   attSelectedDate=todayKey0();
   const pet=document.getElementById('elariaPet');if(pet)pet.style.display='none';
 }
@@ -1038,7 +1077,7 @@ function openModule(id){
   document.getElementById('moduleSelect').style.display='none';
   document.getElementById('moduleContent').style.display='';
   currentStep=0;
-  ({sales:initSalesModule,attendance:renderAttendance,inspection:renderInspection,testing:renderTesting,received:renderReceived,creditsales:renderCreditSales,trucklog:renderTruckLog})[id]();
+  ({sales:initSalesModule,attendance:renderAttendance,inspection:renderInspection,testing:renderTesting,received:renderReceived,creditsales:renderCreditSales,trucklog:renderTruckLog,offers:renderOffers})[id]();
 }
 function backToModules(){
   document.getElementById('moduleSelect').style.display='';
@@ -1048,11 +1087,378 @@ function backToModules(){
   currentModule=null;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// OFFER PANEL — रोपनी सीज़न विशेष · ग्राहक उपहार योजना (HSD cashback)
+// One account per VEHICLE, keyed by roll number. Entries & settlements are stored
+// as individual slips under the roll node and written with cloudPatch (append/merge
+// one child at a time) so two managers on different shifts never clobber each other.
+// Renders into 'stepContent' (manager) or 'ownerTabContent' (owner, full access).
+// ══════════════════════════════════════════════════════════════════════════════
+let offHost='stepContent', offIsOwner=false;
+function offEl(){return document.getElementById(offHost);}
+function offEsc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function offToast(msg){
+  let t=document.getElementById('offToast');
+  if(!t){t=document.createElement('div');t.id='offToast';t.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0A1F5C;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transition:opacity .2s;box-shadow:0 6px 24px rgba(0,0,0,.3);font-family:var(--ui)';document.body.appendChild(t);}
+  t.textContent=msg;t.style.opacity='1';clearTimeout(t._to);t._to=setTimeout(()=>{t.style.opacity='0';},2200);
+}
+function offTime(ts){try{return new Date(ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});}catch(e){return'';}}
+
+// ── Scheme maths (slabs fixed; cashback per entry from its OWN litres) ──────────
+function offRate(l){const s=OFFER_SLABS.find(s=>l>=s.min&&l<=s.max);return s?s.rate:0;}
+function offCashback(l){if(!(l>=OFFER_MIN_L))return 0;return +(l*offRate(l)).toFixed(2);}
+function offSlabLabel(l){const s=OFFER_SLABS.find(s=>l>=s.min&&l<=s.max);if(!s)return'—';return s.max===Infinity?(s.min+'+'):(s.min+'–'+s.max);}
+function offEnd(){return (offerSettings&&offerSettings.end)||OFFER_WINDOW.end;}
+function offStatus(){const t=todayKey0();if(t<OFFER_WINDOW.start)return'Upcoming';if(t>offEnd())return'Ended';return'Active';}
+
+// ── Account helpers (offersData keyed by String(roll)) ──────────────────────────
+function offAcct(roll){return offersData[String(roll)]||null;}
+function offAllAccounts(){return Object.keys(offersData).filter(k=>offersData[k]&&typeof offersData[k]==='object').map(k=>({...offersData[k],roll:(offersData[k].roll!=null?offersData[k].roll:(parseInt(k,10)||k))}));}
+function offEntriesArr(a){return (a&&a.entries&&typeof a.entries==='object')?Object.keys(a.entries).map(k=>({k,...a.entries[k]})):[];}
+function offSettleArr(a){return (a&&a.settlements&&typeof a.settlements==='object')?Object.keys(a.settlements).map(k=>({k,...a.settlements[k]})):[];}
+function offEarned(a){return +offEntriesArr(a).reduce((s,e)=>s+(+e.cashback||0),0).toFixed(2);}
+function offSettled(a){return +offSettleArr(a).reduce((s,e)=>s+(+e.amount||0),0).toFixed(2);}
+function offBalance(a){return +(offEarned(a)-offSettled(a)).toFixed(2);}
+function offNextRoll(){let m=0;Object.keys(offersData).forEach(k=>{const n=parseInt(k,10);if(n>m)m=n;});return m+1;}
+function offKey(){return 'k'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+function offCache(){try{localStorage.setItem(STORE_KEY_OFFERS,JSON.stringify(offersData));}catch(e){}}
+function offAskCode(){const c=prompt('Enter owner code to edit settled money:');if(c===OFFER_EDIT_CODE)return true;if(c!=null)alert('Wrong code — settled money not changed.');return false;}
+
+// ── Entry point: manager module + owner tab ─────────────────────────────────────
+function renderOffers(){offHost='stepContent';offIsOwner=false;const sb=document.getElementById('stepBar');if(sb)sb.innerHTML='';offRenderIndex();}
+function renderOwnerOffers(){offHost='ownerTabContent';offIsOwner=true;offRenderIndex();}
+function offHome(){offRenderIndex();}
+function offHomeBtn(){return `<button class="btn-secondary" onclick="offHome()" style="margin-bottom:12px;padding:7px 14px;font-size:12px">← Offer Home</button>`;}
+function offOpen(view){({customers:offRenderCustomers,newcust:offRenderNewCust,newentry:()=>offRenderPick('entry'),settle:()=>offRenderPick('settle')})[view]();}
+
+function offRenderIndex(){
+  const host=offEl();if(!host)return;
+  const accounts=offAllAccounts();
+  const totCust=accounts.length;
+  const totEarned=accounts.reduce((s,a)=>s+offEarned(a),0);
+  const totSettled=accounts.reduce((s,a)=>s+offSettled(a),0);
+  const totBal=+(totEarned-totSettled).toFixed(2);
+  const totL=accounts.reduce((s,a)=>s+offEntriesArr(a).reduce((x,e)=>x+(+e.litres||0),0),0);
+  const status=offStatus();
+  const stColor=status==='Active'?'#16a34a':(status==='Ended'?'#9ca3af':'#f59e0b');
+  const box=(emoji,title,desc,view)=>`<button class="mod-card" onclick="offOpen('${view}')"><span class="mod-ico" style="font-size:22px">${emoji}</span><span class="mod-name">${title}</span><span class="mod-desc">${desc}</span></button>`;
+  let reconCard='';
+  if(offIsOwner){
+    const reconPaid=cloudData.records.reduce((s,r)=>s+(r.offerPaidTotal||((r.offerPaidItems||[]).reduce((a,x)=>a+(x.amt||0),0))),0);
+    const diff=+(totSettled-reconPaid).toFixed(2);
+    const ok=Math.abs(diff)<0.01;
+    reconCard=`<div class="card" style="border:1px solid ${ok?'rgba(22,163,74,.4)':'rgba(208,30,30,.4)'};background:${ok?'#F3FBF5':'#FFF7F7'}">
+      <div class="card-title">🔎 Reconciliation Check</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="text-align:center;padding:8px;background:#fff;border-radius:8px"><div style="font-size:10px;color:var(--ink-light);text-transform:uppercase">Settled in Panel</div><div style="font-size:16px;font-weight:700;color:var(--ioc-navy)">₹${fmt(totSettled)}</div></div>
+        <div style="text-align:center;padding:8px;background:#fff;border-radius:8px"><div style="font-size:10px;color:var(--ink-light);text-transform:uppercase">Paid in Recon</div><div style="font-size:16px;font-weight:700;color:var(--ioc-navy)">₹${fmt(reconPaid)}</div></div>
+      </div>
+      <div style="text-align:center;margin-top:8px;font-size:13px;font-weight:700;color:${ok?'#16a34a':'var(--ioc-red)'}">${ok?'✓ Matches':'⚠ Differs by ₹'+fmt(Math.abs(diff))}</div>
+    </div>`;
+  }
+  host.innerHTML=`
+  ${offIsOwner?ownerBackBtn():`<button class="btn-secondary" onclick="backToModules()" style="margin-bottom:12px;padding:7px 14px;font-size:12px">← Back to Modules</button>`}
+  <div class="card" style="background:linear-gradient(135deg,#0A1F5C,#1A2F6E);color:#fff;border:none">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div>
+        <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.6)">रोपनी सीज़न विशेष</div>
+        <div style="font-family:var(--font);font-size:20px;font-weight:700">ग्राहक उपहार योजना</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px">HSD Cashback · ${OFFER_WINDOW.start} → ${offEnd()}</div>
+      </div>
+      <span style="background:${stColor};color:#fff;font-size:10px;font-weight:700;padding:4px 9px;border-radius:20px;white-space:nowrap">${status.toUpperCase()}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px">
+      <div style="text-align:center"><div style="font-size:19px;font-weight:700">${totCust}</div><div style="font-size:10px;color:rgba(255,255,255,.6);text-transform:uppercase">Customers</div></div>
+      <div style="text-align:center"><div style="font-size:19px;font-weight:700">${totL.toFixed(0)} L</div><div style="font-size:10px;color:rgba(255,255,255,.6);text-transform:uppercase">Total HSD</div></div>
+      <div style="text-align:center"><div style="font-size:19px;font-weight:700;color:#8fe3a8">₹${fmt0(totBal)}</div><div style="font-size:10px;color:rgba(255,255,255,.6);text-transform:uppercase">Unpaid</div></div>
+    </div>
+  </div>
+  ${reconCard}
+  <div class="mod-grid" style="margin-top:12px">
+    ${box('👥','Customers','View all · search · details','customers')}
+    ${box('➕','Add New Customer','Next roll #'+offNextRoll(),'newcust')}
+    ${box('⛽','Add New Entry','Existing customer fill','newentry')}
+    ${box('💵','Settle','Pay out cashback','settle')}
+  </div>
+  ${offIsOwner?`<div class="btn-row"><button class="btn-secondary" onclick="offExtendEnd()">📅 Extend Offer End (now ${offEnd()})</button></div>`:''}`;
+}
+
+async function offExtendEnd(){
+  const raw=prompt('New offer END date (YYYY-MM-DD):',offEnd());if(!raw)return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(raw)){alert('Use format YYYY-MM-DD');return;}
+  offerSettings={...(offerSettings||{}),end:raw};
+  try{localStorage.setItem(STORE_KEY_OFFERSET,JSON.stringify(offerSettings));}catch(e){}
+  await cloudSet(STORE_KEY_OFFERSET,offerSettings);
+  offToast('Offer end set to '+raw);offRenderIndex();
+}
+
+// ── ① Customers ────────────────────────────────────────────────────────────────
+function offRenderCustomers(){
+  offEl().innerHTML=`${offHomeBtn()}
+  <div class="card"><div class="card-title">👥 Customers</div>
+    <div class="field"><div class="lbl">Search by Roll No. or Name</div><input type="text" id="offCustQ" placeholder="Type roll number or name…" oninput="offCustFilter(this.value)" autocomplete="off"></div>
+    <div id="offCustList" style="margin-top:8px"></div>
+  </div>`;
+  offCustFilter('');
+}
+function offCustFilter(q){
+  const el=document.getElementById('offCustList');if(!el)return;
+  q=(q||'').trim().toLowerCase();
+  let list=offAllAccounts();
+  if(q)list=list.filter(a=>String(a.roll).includes(q)||(a.name||'').toLowerCase().includes(q));
+  list.sort((a,b)=>a.roll-b.roll);
+  if(!list.length){el.innerHTML=`<div style="text-align:center;color:var(--ink-light);padding:14px;font-size:13px">${offAllAccounts().length?'No match':'No customers yet — add one first'}</div>`;return;}
+  el.innerHTML=list.map(a=>{const bal=offBalance(a);return `<div class="list-item" style="cursor:pointer" onclick="offRenderCustomer(${a.roll})"><div class="list-item-body"><div class="list-item-title">#${a.roll} · ${offEsc(a.name||'—')}</div><div style="font-size:11px;color:var(--ink-light)">${offEsc(a.vtype||'')} · ${offEsc(a.vno||'N/A')} · ${offEntriesArr(a).length} fills</div></div><span class="list-item-amount" style="color:${bal>0?'var(--ioc-red)':'var(--ink-light)'}">₹${fmt(bal)}</span></div>`;}).join('');
+}
+
+function offRenderCustomer(roll){
+  const a=offAcct(roll),host=offEl();
+  if(!a){host.innerHTML=offHomeBtn()+'<div class="card">Customer not found.</div>';return;}
+  const earned=offEarned(a),settled=offSettled(a),bal=offBalance(a);
+  const ents=offEntriesArr(a).sort((x,y)=>String(y.ts||'').localeCompare(String(x.ts||'')));
+  const sets=offSettleArr(a).sort((x,y)=>String(y.ts||'').localeCompare(String(x.ts||'')));
+  const entRows=ents.length?ents.map(e=>`<tr><td>${e.date||'—'}</td><td class="right">${(+e.litres||0)} L</td><td class="right">₹${fmt(e.amount||0)}</td><td class="right">₹${(+e.rate||0).toFixed(2)}/L</td><td class="right" style="color:#16a34a">₹${fmt(e.cashback||0)}</td><td class="right"><button class="rm-btn" title="Delete fill" onclick="offDeleteEntry(${roll},'${e.k}')">✕</button></td></tr>`).join(''):`<tr><td colspan="6" style="text-align:center;color:var(--ink-light);padding:10px">No fills yet</td></tr>`;
+  const setRows=sets.length?sets.map(s=>`<tr><td>${s.date||'—'}</td><td class="right">₹${fmt(s.amount||0)}</td><td style="font-size:10px;color:var(--ink-light)">${offEsc(s.by||'')}${s.ts?' · '+offTime(s.ts):''}${s.editedTs?' · edited':''}</td><td class="right" style="white-space:nowrap"><button class="rm-btn" title="Edit (owner code)" onclick="offEditSettle(${roll},'${s.k}')">✎</button> <button class="rm-btn" title="Delete (owner code)" onclick="offDelSettle(${roll},'${s.k}')">✕</button></td></tr>`).join(''):`<tr><td colspan="4" style="text-align:center;color:var(--ink-light);padding:10px">No settlements yet</td></tr>`;
+  host.innerHTML=`${offHomeBtn()}
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div>
+        <div style="font-size:11px;color:var(--ink-light);text-transform:uppercase;letter-spacing:.05em">Roll #${roll}</div>
+        <div style="font-size:19px;font-weight:700;color:var(--ioc-navy);font-family:var(--font)">${offEsc(a.name||'—')}</div>
+        <div style="font-size:12px;color:var(--ink-light);margin-top:2px">${offEsc(a.vtype||'')} · ${offEsc(a.vno||'N/A')}${a.mobile?' · 📞 '+offEsc(a.mobile):''}</div>
+        ${a.note?`<div style="font-size:12px;color:var(--ink-light);margin-top:3px">📝 ${offEsc(a.note)}</div>`:''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+        <button class="rm-btn" title="Edit details" onclick="offEditProfile(${roll})" style="font-size:12px">✎</button>
+        <button class="rm-btn" title="Delete customer" onclick="offDelCustomer(${roll})" style="font-size:12px;color:var(--ioc-red)">🗑</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px">
+      <div style="background:#F6F8FC;border-radius:8px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--ink-light);text-transform:uppercase">Earned</div><div style="font-size:15px;font-weight:700;color:#16a34a">₹${fmt(earned)}</div></div>
+      <div style="background:#F6F8FC;border-radius:8px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--ink-light);text-transform:uppercase">Settled</div><div style="font-size:15px;font-weight:700;color:var(--ioc-navy)">₹${fmt(settled)}</div></div>
+      <div style="background:${bal>0?'#FFF5F5':'#F6F8FC'};border-radius:8px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--ink-light);text-transform:uppercase">Balance</div><div style="font-size:15px;font-weight:700;color:${bal>0?'var(--ioc-red)':'var(--ink)'}">₹${fmt(bal)}</div></div>
+    </div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn-primary" onclick="offSettleForm(${roll})" ${bal<=0?'disabled style="opacity:.5"':''}>💵 Settle</button>
+      <button class="btn-secondary" onclick="offEntryForm(${roll})">⛽ Add Fill</button>
+    </div>
+  </div>
+  <div class="card"><div class="card-title">⛽ Fills <span style="font-size:11px;color:var(--ink-light);font-weight:400">(each slab independent)</span></div>
+    <div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Date</th><th class="right">Litres</th><th class="right">Amount</th><th class="right">Rate</th><th class="right">Cashback</th><th></th></tr></thead><tbody>${entRows}</tbody></table></div>
+  </div>
+  <div class="card"><div class="card-title">💵 Settlements <span style="font-size:11px;color:var(--ink-light);font-weight:400">(edit/delete needs owner code)</span></div>
+    <div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Date</th><th class="right">Amount</th><th>By</th><th></th></tr></thead><tbody>${setRows}</tbody></table></div>
+  </div>`;
+}
+
+// ── ② Add New Customer (profile + first fill) ───────────────────────────────────
+function offRenderNewCust(){
+  const nr=offNextRoll();
+  offEl().innerHTML=`${offHomeBtn()}
+  <div class="card"><div class="card-title">➕ Add New Customer</div>
+    <div class="grid2">
+      <div class="field"><div class="lbl">Roll No.</div><input type="number" id="offNewRoll" min="1" step="1" value="${nr}"></div>
+      <div class="field"><div class="lbl">Name</div><input type="text" id="offNewName" placeholder="Customer name" style="text-transform:uppercase"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><div class="lbl">Mobile</div><input type="tel" id="offNewMobile" placeholder="10-digit"></div>
+      <div class="field"><div class="lbl">Vehicle Type</div><select id="offNewVtype">${OFFER_VTYPES.map(v=>`<option value="${v}">${v}</option>`).join('')}</select></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><div class="lbl">Vehicle No. <span style="font-size:10px;color:var(--ink-light)">(N/A if none)</span></div><input type="text" id="offNewVno" placeholder="UP65 AB 1234 / N/A" style="text-transform:uppercase"></div>
+      <div class="field"><div class="lbl">Note</div><input type="text" id="offNewNote" placeholder="optional"></div>
+    </div>
+    <div style="border-top:1px dashed var(--ioc-border);margin:10px 0;padding-top:8px;font-size:12px;font-weight:600;color:var(--ioc-navy)">First Fill — they're taking fuel now</div>
+    <div class="grid2">
+      <div class="field"><div class="lbl">Volume (L) — min ${OFFER_MIN_L}</div><input type="number" id="offNewL" step="0.01" min="${OFFER_MIN_L}" placeholder="0" oninput="offCbPreview('offNewL','offNewPrev')"></div>
+      <div class="field"><div class="lbl">Amount (₹) <span style="font-size:10px;color:var(--ink-light)">(reference)</span></div><input type="number" id="offNewAmt" step="0.01" placeholder="0"></div>
+    </div>
+    <div id="offNewPrev" style="font-size:12px;margin:6px 0 10px;min-height:16px;color:var(--ink-light)">Enter litres to see cashback</div>
+    <button class="btn-primary" id="offNewBtn" onclick="offSaveNewCust()">Save Customer + First Fill</button>
+  </div>`;
+}
+async function offSaveNewCust(){
+  const roll=parseInt(document.getElementById('offNewRoll').value,10);
+  if(!(roll>0)){alert('Enter a valid roll number');return;}
+  if(offAcct(roll)){alert('Roll #'+roll+' already exists. Use "Add New Entry" for an existing customer.');return;}
+  const name=gs('offNewName');if(!name){alert('Name is required');return;}
+  const mobile=gs('offNewMobile'),vtype=gs('offNewVtype')||OFFER_VTYPES[0],note=gs('offNewNote');
+  let vno=gs('offNewVno').toUpperCase();if(!vno)vno='N/A';
+  const l=gv('offNewL'),amt=gv('offNewAmt');
+  if(!(l>=OFFER_MIN_L)){alert('First fill must be at least '+OFFER_MIN_L+' L');return;}
+  const now=new Date().toISOString(),eKey=offKey();
+  const entry={litres:+l,amount:+amt||0,rate:offRate(l),cashback:offCashback(l),date:todayKey0(),ts:now,by:currentRole||''};
+  const acct={roll,name,mobile,vtype,vno,note,createdTs:now,by:currentRole||'',entries:{[eKey]:entry},settlements:{}};
+  offersData[String(roll)]=acct;offCache();
+  const btn=document.getElementById('offNewBtn');if(btn){btn.disabled=true;btn.textContent='Saving…';}
+  await cloudPatch(`${STORE_KEY_OFFERS}/${roll}`,{roll,name,mobile,vtype,vno,note,createdTs:now,by:currentRole||'',entries:{[eKey]:entry}});
+  offToast('Customer #'+roll+' added · ₹'+fmt(entry.cashback)+' cashback');offRenderCustomer(roll);
+}
+
+// ── ③ Add New Entry & ④ Settle — pick a roll first ──────────────────────────────
+function offRenderPick(mode){
+  offEl().innerHTML=`${offHomeBtn()}
+  <div class="card"><div class="card-title">${mode==='entry'?'⛽ Add New Entry':'💵 Settle'}</div>
+    <div class="field"><div class="lbl">Search by Roll No. or Name</div><input type="text" id="offPickQ" placeholder="Type roll number or name…" oninput="offPickFilter(this.value,'${mode}')" autocomplete="off"></div>
+    <div id="offPickList" style="margin-top:8px"></div>
+  </div>`;
+  offPickFilter('',mode);
+}
+function offPickFilter(q,mode){
+  const el=document.getElementById('offPickList');if(!el)return;
+  q=(q||'').trim().toLowerCase();
+  let list=offAllAccounts();
+  if(q)list=list.filter(a=>String(a.roll).includes(q)||(a.name||'').toLowerCase().includes(q));
+  list.sort((a,b)=>a.roll-b.roll);
+  if(!list.length){el.innerHTML=`<div style="text-align:center;color:var(--ink-light);padding:14px;font-size:13px">${offAllAccounts().length?'No match':'No customers yet — add one first'}</div>`;return;}
+  const fn=mode==='entry'?'offEntryForm':'offSettleForm';
+  el.innerHTML=list.slice(0,60).map(a=>{const bal=offBalance(a);return `<div class="list-item" style="cursor:pointer" onclick="${fn}(${a.roll})"><div class="list-item-body"><div class="list-item-title">#${a.roll} · ${offEsc(a.name||'—')}</div><div style="font-size:11px;color:var(--ink-light)">${offEsc(a.vtype||'')} · ${offEsc(a.vno||'N/A')} · Bal ₹${fmt(bal)}</div></div><span class="list-item-amount">›</span></div>`;}).join('');
+}
+
+function offEntryForm(roll){
+  const a=offAcct(roll),host=offEl();
+  if(!a){host.innerHTML=offHomeBtn()+'<div class="card">Customer not found.</div>';return;}
+  host.innerHTML=`<button class="btn-secondary" onclick="offRenderCustomer(${roll})" style="margin-bottom:12px;padding:7px 14px;font-size:12px">← Back to Customer</button>
+  <div class="card"><div class="card-title">⛽ New Fill — Roll #${roll}</div>
+    <div style="font-size:13px;color:var(--ink-light);margin-bottom:10px">${offEsc(a.name||'')} · ${offEsc(a.vtype||'')} · ${offEsc(a.vno||'N/A')}</div>
+    <div class="grid2">
+      <div class="field"><div class="lbl">Volume (L) — min ${OFFER_MIN_L}</div><input type="number" id="offEntryL" step="0.01" min="${OFFER_MIN_L}" placeholder="0" oninput="offCbPreview('offEntryL','offEntryPrev')"></div>
+      <div class="field"><div class="lbl">Amount (₹) <span style="font-size:10px;color:var(--ink-light)">(reference)</span></div><input type="number" id="offEntryAmt" step="0.01" placeholder="0"></div>
+    </div>
+    <div id="offEntryPrev" style="font-size:12px;margin:6px 0 10px;min-height:16px;color:var(--ink-light)">Enter litres to see cashback</div>
+    <button class="btn-primary" id="offEntryBtn" onclick="offDoEntry(${roll})">Save Fill</button>
+  </div>`;
+}
+async function offDoEntry(roll){
+  const a=offAcct(roll);if(!a){alert('Customer not found');return;}
+  const l=gv('offEntryL'),amt=gv('offEntryAmt');
+  if(!(l>=OFFER_MIN_L)){alert('Minimum '+OFFER_MIN_L+' L to qualify');return;}
+  const now=new Date().toISOString(),key=offKey();
+  const entry={litres:+l,amount:+amt||0,rate:offRate(l),cashback:offCashback(l),date:todayKey0(),ts:now,by:currentRole||''};
+  a.entries=a.entries||{};a.entries[key]=entry;offCache();
+  const btn=document.getElementById('offEntryBtn');if(btn){btn.disabled=true;btn.textContent='Saving…';}
+  await cloudPatch(`${STORE_KEY_OFFERS}/${roll}/entries`,{[key]:entry});
+  offToast('Fill saved · ₹'+fmt(entry.cashback)+' cashback');offRenderCustomer(roll);
+}
+
+function offSettleForm(roll){
+  const a=offAcct(roll),host=offEl();
+  if(!a){host.innerHTML=offHomeBtn()+'<div class="card">Customer not found.</div>';return;}
+  const bal=offBalance(a);
+  host.innerHTML=`<button class="btn-secondary" onclick="offRenderCustomer(${roll})" style="margin-bottom:12px;padding:7px 14px;font-size:12px">← Back to Customer</button>
+  <div class="card"><div class="card-title">💵 Settle — Roll #${roll}</div>
+    <div style="font-size:13px;color:var(--ink-light);margin-bottom:8px">${offEsc(a.name||'')} · ${offEsc(a.vtype||'')}</div>
+    <div style="background:#FFF5F5;border-radius:8px;padding:10px;text-align:center;margin-bottom:12px"><div style="font-size:10px;color:var(--ink-light);text-transform:uppercase">Cashback Balance</div><div style="font-size:22px;font-weight:700;color:var(--ioc-red)">₹${fmt(bal)}</div></div>
+    <div class="field"><div class="lbl">Settle Amount (₹) — max ₹${fmt(bal)}</div><input type="number" id="offSettleAmt" step="0.01" max="${bal}" placeholder="0"></div>
+    <div class="btn-row"><button class="btn-primary" id="offSettleBtn" onclick="offDoSettle(${roll})" ${bal<=0?'disabled style="opacity:.5"':''}>Settle</button>
+    <button class="btn-secondary" onclick="var e=document.getElementById('offSettleAmt');if(e)e.value=${bal}">Full ₹${fmt(bal)}</button></div>
+  </div>`;
+}
+async function offDoSettle(roll){
+  const a=offAcct(roll);if(!a){alert('Customer not found');return;}
+  const bal=offBalance(a),amt=gv('offSettleAmt');
+  if(!(amt>0)){alert('Enter an amount');return;}
+  if(amt>bal+0.001){alert('Cannot settle more than the balance (₹'+fmt(bal)+')');return;}
+  const now=new Date().toISOString(),key=offKey();
+  const s={amount:+amt.toFixed(2),date:todayKey0(),ts:now,by:currentRole||''};
+  a.settlements=a.settlements||{};a.settlements[key]=s;offCache();
+  const btn=document.getElementById('offSettleBtn');if(btn){btn.disabled=true;btn.textContent='Settling…';}
+  await cloudPatch(`${STORE_KEY_OFFERS}/${roll}/settlements`,{[key]:s});
+  offToast('Settled ₹'+fmt(amt));offRenderCustomer(roll);
+}
+
+// ── Edit / delete ───────────────────────────────────────────────────────────────
+function offEditProfile(roll){
+  const a=offAcct(roll),host=offEl();if(!a)return;
+  host.innerHTML=`<button class="btn-secondary" onclick="offRenderCustomer(${roll})" style="margin-bottom:12px;padding:7px 14px;font-size:12px">← Cancel</button>
+  <div class="card"><div class="card-title">✎ Edit Roll #${roll}</div>
+    <div class="grid2">
+      <div class="field"><div class="lbl">Name</div><input type="text" id="offEdName" value="${offEsc(a.name||'')}" style="text-transform:uppercase"></div>
+      <div class="field"><div class="lbl">Mobile</div><input type="tel" id="offEdMobile" value="${offEsc(a.mobile||'')}"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><div class="lbl">Vehicle Type</div><select id="offEdVtype">${OFFER_VTYPES.map(v=>`<option value="${v}" ${v===a.vtype?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="field"><div class="lbl">Vehicle No.</div><input type="text" id="offEdVno" value="${offEsc(a.vno||'')}" style="text-transform:uppercase"></div>
+    </div>
+    <div class="field"><div class="lbl">Note</div><input type="text" id="offEdNote" value="${offEsc(a.note||'')}"></div>
+    <button class="btn-primary" onclick="offSaveProfile(${roll})">Save Details</button>
+  </div>`;
+}
+async function offSaveProfile(roll){
+  const a=offAcct(roll);if(!a)return;
+  const name=gs('offEdName')||a.name,mobile=gs('offEdMobile'),vtype=gs('offEdVtype')||a.vtype,note=gs('offEdNote');
+  let vno=gs('offEdVno').toUpperCase();if(!vno)vno='N/A';
+  Object.assign(a,{name,mobile,vtype,vno,note});offCache();
+  await cloudPatch(`${STORE_KEY_OFFERS}/${roll}`,{name,mobile,vtype,vno,note});
+  offToast('Details updated');offRenderCustomer(roll);
+}
+async function offDeleteEntry(roll,key){
+  const a=offAcct(roll);if(!a||!a.entries||!a.entries[key])return;
+  const cb=+a.entries[key].cashback||0;
+  if(offEarned(a)-cb < offSettled(a)-0.001){alert('Cannot delete — this fill\'s cashback is already settled. Adjust the settlement first (needs owner code).');return;}
+  if(!confirm('Delete this fill?'))return;
+  delete a.entries[key];offCache();
+  await cloudDel(`${STORE_KEY_OFFERS}/${roll}/entries/${key}`);
+  offToast('Fill deleted');offRenderCustomer(roll);
+}
+async function offEditSettle(roll,key){
+  if(!offAskCode())return;
+  const a=offAcct(roll),s=a&&a.settlements&&a.settlements[key];if(!s)return;
+  const cur=+s.amount||0,raw=prompt('New settled amount (₹):',cur);if(raw==null)return;
+  const v=parseFloat(raw);if(!(v>0)){alert('Enter a positive amount');return;}
+  const maxAllowed=+(offEarned(a)-(offSettled(a)-cur)).toFixed(2);
+  if(v>maxAllowed+0.001){alert('Exceeds available balance. Max ₹'+fmt(maxAllowed));return;}
+  s.amount=+v.toFixed(2);s.editedTs=new Date().toISOString();s.editedBy=currentRole||'';offCache();
+  await cloudPatch(`${STORE_KEY_OFFERS}/${roll}/settlements/${key}`,{amount:s.amount,editedTs:s.editedTs,editedBy:s.editedBy});
+  offToast('Settlement updated');offRenderCustomer(roll);
+}
+async function offDelSettle(roll,key){
+  if(!offAskCode())return;
+  if(!confirm('Delete this settlement?'))return;
+  const a=offAcct(roll);if(a&&a.settlements)delete a.settlements[key];offCache();
+  await cloudDel(`${STORE_KEY_OFFERS}/${roll}/settlements/${key}`);
+  offToast('Settlement deleted');offRenderCustomer(roll);
+}
+async function offDelCustomer(roll){
+  const a=offAcct(roll);if(!a)return;
+  if(offSettleArr(a).length){if(!offAskCode())return;}
+  if(!confirm('Delete customer #'+roll+' and ALL their fills & settlements? This cannot be undone.'))return;
+  delete offersData[String(roll)];offCache();
+  await cloudDel(`${STORE_KEY_OFFERS}/${roll}`);
+  offToast('Customer #'+roll+' deleted');offHome();
+}
+function offCbPreview(litresId,previewId){
+  const l=parseFloat(document.getElementById(litresId)?.value)||0,el=document.getElementById(previewId);if(!el)return;
+  if(l<OFFER_MIN_L){el.innerHTML=`<span style="color:var(--ioc-red)">Below ${OFFER_MIN_L} L — not eligible for cashback</span>`;return;}
+  el.innerHTML=`Slab ${offSlabLabel(l)} L → <b>₹${offRate(l).toFixed(2)}/L</b> · Cashback <b style="color:#16a34a">₹${fmt(offCashback(l))}</b>`;
+}
+
+// ── Recon-side box (Expenses step) — independent from the panel ──────────────────
+function offPaidNameHint(){
+  const el=document.getElementById('offPaidHint');if(!el)return;
+  const roll=parseInt(document.getElementById('offPaidRoll')?.value,10);
+  if(!(roll>0)){el.textContent='';return;}
+  const a=offAcct(roll);
+  if(a)el.innerHTML=`Roll #${roll} — <b>${offEsc(a.name||'')}</b> (${offEsc(a.vtype||'')}) · panel balance ₹${fmt(offBalance(a))}`;
+  else el.innerHTML=`<span style="color:var(--ioc-red)">No customer #${roll} in Offer Panel — will still be recorded here.</span>`;
+}
+function addOfferPaid(){
+  const roll=parseInt(document.getElementById('offPaidRoll')?.value,10),amt=gv('offPaidAmt');
+  if(!(roll>0)){alert('Enter a roll number');return;}
+  if(!(amt>0)){alert('Enter an amount');return;}
+  offerPaidItems.push({roll,amt:+amt.toFixed(2)});
+  document.getElementById('offPaidRoll').value='';document.getElementById('offPaidAmt').value='';
+  const h=document.getElementById('offPaidHint');if(h)h.textContent='';
+  renderOfferPaidList();
+}
+function removeOfferPaid(i){offerPaidItems.splice(i,1);renderOfferPaidList();}
+function renderOfferPaidList(){const el=document.getElementById('offPaidList');if(!el)return;el.innerHTML=offerPaidItems.map((x,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">Roll #${x.roll}</div></div><span class="list-item-amount">₹${fmt(x.amt)}</span><button class="rm-btn" onclick="removeOfferPaid(${i})">✕</button></div>`).join('');}
+
 // ── MODULE 1: DAILY SALES ─────────────────────────────────────────────────────
 const SALE_STEPS=[{id:'closing',label:'Closing Meters'},{id:'testing',label:'Testing'},{id:'rsp',label:'RSP'},{id:'extras',label:'BF/Mobil/Deposit'},{id:'paytm',label:'Paytm & Card'},{id:'expenses',label:'Expenses'},{id:'report',label:'Final Report'}];
 let salesDate=todayKey0();
 function initSalesModule(){
-  salesDate=todayKey0();draft={};mobilItems=[];depositItems=[];advItems=[];creditSaleItems=[];pumpExpItems=[];
+  salesDate=todayKey0();draft={};mobilItems=[];depositItems=[];advItems=[];creditSaleItems=[];pumpExpItems=[];offerPaidItems=[];
   renderSalesDatePicker();
 }
 function renderSalesDatePicker(){
@@ -1198,8 +1604,14 @@ function renderExpenses(){
     <div class="card"><div class="card-title">🔧 Pump Expense</div><div class="grid2" style="margin-bottom:8px"><div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="expAmt" step="0.01"></div><div class="field"><div class="lbl">Category</div><input type="text" id="expName" placeholder="Electricity…"></div></div><button class="btn-secondary" style="margin-bottom:8px" onclick="addExp()">+ Add</button><div id="expList"></div></div>
     <div class="card"><div class="card-title">📦 Other Expense <span style="font-size:11px;color:var(--ink-light);font-weight:400">(misc — subtracted from cash)</span></div><div class="grid2"><div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="otherExp" value="${draft.otherExp||0}" step="0.01" placeholder="0"></div><div class="field"><div class="lbl">Note</div><input type="text" id="otherExpName" value="${draft.otherExpName||''}" placeholder="Misc / other"></div></div></div>
     <div class="card"><div class="card-title">🚛 Tanker Expense</div><div class="grid2"><div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="tanker" value="${draft.tanker||0}" step="0.01"></div><div class="field"><div class="lbl">Note</div><input type="text" id="tankerName" value="${draft.tankerName||''}" placeholder="Loading charges"></div></div></div>
+    <div class="card" style="border:1px solid var(--ioc-border);background:#FFFBF5"><div class="card-title">${ic('offer')} Offer Cashback Paid <span style="font-size:11px;color:var(--ink-light);font-weight:400">(cash out · independent — reconcile with Offer Panel)</span></div>
+      <div class="grid2" style="margin-bottom:4px"><div class="field"><div class="lbl">Roll No.</div><input type="number" id="offPaidRoll" min="1" step="1" placeholder="e.g. 1" oninput="offPaidNameHint()"></div><div class="field"><div class="lbl">Amount Paid (₹)</div><input type="number" id="offPaidAmt" step="0.01" placeholder="0"></div></div>
+      <div id="offPaidHint" style="font-size:11px;color:var(--ioc-navy);min-height:15px;margin-bottom:6px"></div>
+      <button class="btn-secondary" style="margin-bottom:8px" onclick="addOfferPaid()">+ Add</button>
+      <div id="offPaidList"></div>
+    </div>
     <div class="btn-row"><button class="btn-primary" onclick="saveExpenses()">Generate Report →</button></div>`;
-  renderAdvList();renderCSList();renderExpList();
+  renderAdvList();renderCSList();renderExpList();renderOfferPaidList();
 }
 function addAdv(){const a=gv('advAmt'),n=gs('advName');if(!a||!n)return;advItems.push({amt:a,name:n});document.getElementById('advAmt').value='';document.getElementById('advName').value='';renderAdvList();}
 function removeAdv(i){advItems.splice(i,1);renderAdvList();}
@@ -1214,13 +1626,16 @@ function saveExpenses(){
   draft.otp=gv('otp');draft.tanker=gv('tanker');draft.tankerName=gs('tankerName');draft.acctTr=gv('acctTr');draft.hoBank=gv('hoBank');
   draft.otherExp=gv('otherExp');draft.otherExpName=gs('otherExpName');
   draft.advItems=[...advItems];draft.creditSaleItems=[...creditSaleItems];draft.pumpExpItems=[...pumpExpItems];
+  draft.offerPaidItems=[...offerPaidItems];
   draft.advTotal=advItems.reduce((a,x)=>a+x.amt,0);
   draft.csTotal=creditSaleItems.reduce((a,x)=>a+x.amt,0);
   draft.pumpExpTotal=pumpExpItems.reduce((a,x)=>a+x.amt,0);
+  draft.offerPaidTotal=offerPaidItems.reduce((a,x)=>a+(x.amt||0),0);
   // Gross = Fuel + BF + Mobil + Deposit (NO rounding — exact float)
   draft.grossTotal=draft.fuelTotal+(draft.bf||0)+(draft.mobilTotal||0)+(draft.depositTotal||0);
-  // Deductions include credit sales (credit is subtracted from cash) and other expense
-  const td=draft.paytmTotal+draft.otp+draft.tanker+draft.advTotal+draft.csTotal+draft.pumpExpTotal+draft.acctTr+draft.hoBank+draft.otherExp;
+  // Deductions include credit sales (credit is subtracted from cash), other expense
+  // and any offer cashback physically paid out today (cash left the drawer).
+  const td=draft.paytmTotal+draft.otp+draft.tanker+draft.advTotal+draft.csTotal+draft.pumpExpTotal+draft.acctTr+draft.hoBank+draft.otherExp+draft.offerPaidTotal;
   draft.totalDeductions=td;
   // Final Cash = Gross - All Deductions (exact, no rounding)
   draft.finalCash=draft.grossTotal-td;
@@ -1247,6 +1662,8 @@ function renderReport(){
   const eHtml=(d.pumpExpItems||[]).length?`<div class="report-section"><div class="report-section-title">🧾 Pump Expenses</div><table class="rtable"><thead><tr><th>Category</th><th>Amount</th></tr></thead><tbody>${(d.pumpExpItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('')}</tbody><tfoot><tr><td><b>Total</b></td><td class="right"><b>₹${fmt(d.pumpExpTotal)}</b></td></tr></tfoot></table></div>`:'';
   // Deposit items
   const depHtml=(d.depositItems||[]).length?`<div class="report-section"><div class="report-section-title">💵 Deposits</div><table class="rtable"><thead><tr><th>Party</th><th>Amount</th></tr></thead><tbody>${(d.depositItems||[]).map(x=>`<tr><td>${x.name}</td><td class="right">₹${fmt(x.amt)}</td></tr>`).join('')}</tbody></table></div>`:'';
+  // Offer cashback paid — independent recon record (reconcile with Offer Panel)
+  const offHtml=(d.offerPaidItems||[]).length?`<div class="report-section"><div class="report-section-title" style="color:var(--ioc-red)">🎁 Offer Cashback Paid <small style="font-weight:400;font-size:11px">(deducted from cash · reconcile with Offer Panel)</small></div><table class="rtable"><thead><tr><th>Roll No.</th><th>Amount</th></tr></thead><tbody>${(d.offerPaidItems||[]).map(x=>`<tr><td>#${x.roll}</td><td class="right" style="color:var(--ioc-red)">₹${fmt(x.amt)}</td></tr>`).join('')}</tbody><tfoot><tr><td><b>Total Paid</b></td><td class="right" style="color:var(--ioc-red)"><b>₹${fmt(d.offerPaidTotal)}</b></td></tr></tfoot></table></div>`:'';
 
   document.getElementById('stepContent').innerHTML=`
   <div class="report">
@@ -1313,11 +1730,12 @@ function renderReport(){
       ${(d.advItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Advance — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
       ${(d.creditSaleItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Credit Sale — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
       ${(d.pumpExpItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Expense — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
+      ${(d.offerPaidItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Offer Cashback — Roll #${x.roll}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
       <div class="summary-row" style="border-top:2px solid var(--ioc-red);padding-top:8px;margin-top:4px"><span class="summary-lbl" style="font-size:14px"><b>TOTAL DEDUCTIONS</b></span><span class="summary-val" style="color:var(--ioc-red);font-size:16px"><b>₹${fmt(d.totalDeductions)}</b></span></div>
     </div>
 
     <!-- DETAILED SECTIONS -->
-    ${mHtml}${depHtml}${csHtml}${advHtml}${eHtml}
+    ${mHtml}${depHtml}${csHtml}${advHtml}${eHtml}${offHtml}
 
     <!-- FINAL CASH BOX -->
     <div class="final-cash-box">
@@ -2691,6 +3109,7 @@ function renderOwnerReport(){
     {id:'growth',icon:'trend',name:'Growth Analysis',desc:'Day · Month · Year · Custom range'},
     {id:'deposit',icon:'wallet',name:'Deposits',desc:'Bank · IOC · Paytm · Cash'},
     {id:'testingprofit',icon:'flask',name:'Testing Profit',desc:'Income from testing sold'},
+    {id:'offers',icon:'offer',name:'Offer Panel',desc:'Cashback · customers · balances · settled vs paid'},
   ];
 
   document.getElementById('ownerReport').innerHTML=`
@@ -2752,6 +3171,7 @@ function openOwnerTab(tab){
   else if(tab==='growth')renderOwnerGrowth();
   else if(tab==='deposit')renderOwnerDeposit();
   else if(tab==='testingprofit')renderOwnerTestingProfit();
+  else if(tab==='offers')renderOwnerOffers();
   else if(tab==='fullrecords')renderOwnerFullRecords();
 }
 
@@ -4135,6 +4555,7 @@ function showHistDetail(i){
       ${(d.advItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Advance — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
       ${(d.creditSaleItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Credit Sale — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
       ${(d.pumpExpItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Expense — ${x.name}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
+      ${(d.offerPaidItems||[]).map(x=>`<div class="summary-row"><span class="summary-lbl">Offer Cashback — Roll #${x.roll}</span><span class="summary-val" style="color:var(--ioc-red)">− ₹${fmt(x.amt)}</span></div>`).join('')}
       <div class="summary-row" style="border-top:2px solid var(--ioc-red);padding-top:8px;margin-top:4px"><span class="summary-lbl" style="font-size:14px"><b>TOTAL DEDUCTIONS</b></span><span class="summary-val" style="font-size:16px;color:var(--ioc-red)"><b>₹${fmt(d.totalDeductions)}</b></span></div>
     </div>
 
@@ -4144,6 +4565,7 @@ function showHistDetail(i){
     ${csRows?`<div class="report-section"><div class="report-section-title" style="color:var(--ioc-red)">💳 Credit Sales (Deducted from Cash)</div><table class="rtable"><thead><tr><th>Party</th><th>Amount</th></tr></thead><tbody>${csRows}</tbody><tfoot><tr><td><b>Total</b></td><td class="right" style="color:var(--ioc-red)"><b>₹${fmt(d.csTotal)}</b></td></tr></tfoot></table></div>`:''}
     ${advRows?`<div class="report-section"><div class="report-section-title">👷 Advances Given</div><table class="rtable"><thead><tr><th>Employee</th><th>Amount</th></tr></thead><tbody>${advRows}</tbody><tfoot><tr><td><b>Total</b></td><td class="right"><b>₹${fmt(d.advTotal)}</b></td></tr></tfoot></table></div>`:''}
     ${expRows?`<div class="report-section"><div class="report-section-title">🧾 Pump Expenses</div><table class="rtable"><thead><tr><th>Category</th><th>Amount</th></tr></thead><tbody>${expRows}</tbody><tfoot><tr><td><b>Total</b></td><td class="right"><b>₹${fmt(d.pumpExpTotal)}</b></td></tr></tfoot></table></div>`:''}
+    ${(d.offerPaidItems||[]).length?`<div class="report-section"><div class="report-section-title" style="color:var(--ioc-red)">🎁 Offer Cashback Paid <small style="font-weight:400;font-size:11px">(reconcile with Offer Panel)</small></div><table class="rtable"><thead><tr><th>Roll No.</th><th>Amount</th></tr></thead><tbody>${(d.offerPaidItems||[]).map(x=>`<tr><td>#${x.roll}</td><td class="right" style="color:var(--ioc-red)">₹${fmt(x.amt)}</td></tr>`).join('')}</tbody><tfoot><tr><td><b>Total Paid</b></td><td class="right" style="color:var(--ioc-red)"><b>₹${fmt(d.offerPaidTotal||0)}</b></td></tr></tfoot></table></div>`:''}
 
     <!-- FINAL CASH BOX -->
     <div class="final-cash-box">
