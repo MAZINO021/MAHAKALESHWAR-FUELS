@@ -1077,7 +1077,7 @@ function openModule(id){
   document.getElementById('moduleSelect').style.display='none';
   document.getElementById('moduleContent').style.display='';
   currentStep=0;
-  ({sales:initSalesModule,attendance:renderAttendance,inspection:renderInspection,testing:renderTesting,received:renderReceived,creditsales:renderCreditSales,trucklog:renderTruckLog,offers:renderOffers})[id]();
+  ({sales:initSalesModule,attendance:renderAttendance,inspection:renderInspection,testing:renderTesting,received:renderReceived,creditsales:renderCreditSales,trucklog:()=>{truckEditIndex=null;renderTruckLog();},offers:renderOffers})[id]();
 }
 function backToModules(){
   document.getElementById('moduleSelect').style.display='';
@@ -2485,9 +2485,11 @@ function truckCustomers(){
 let truckTab='home';
 function setTruckTab(t){truckTab=t;renderTruckLog();}
 function vrTabBar(){var tabs=[['home','🚚 Log & Track'],['customers','👥 Customers'],['trucks','🚛 Trucks'],['calls','📞 Call List'],['master','🔗 Master'],['analysis','📊 Analysis']];return '<div id="vrTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 2px">'+tabs.map(function(t){return '<button class="step-btn'+(truckTab===t[0]?' active':'')+'" style="padding:7px 13px;font-size:12px" onclick="setTruckTab(\''+t[0]+'\')">'+t[1]+'</button>';}).join('')+'</div>';}
+let truckEditIndex=null;   // index in truckData of the entry being edited (null = adding a new one)
 function renderTruckLog(){
   document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="backToModules()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`+vrTabBar();
-  if(truckTab!=='home'){document.getElementById('stepContent').innerHTML='<div id="vrRoot" style="padding-top:4px"></div>';if(window.VR)VR.go(truckTab==='analysis'?'':truckTab);return;}
+  if(truckTab!=='home'){truckEditIndex=null;document.getElementById('stepContent').innerHTML='<div id="vrRoot" style="padding-top:4px"></div>';if(window.VR)VR.go(truckTab==='analysis'?'':truckTab);return;}
+  const ed=(truckEditIndex!=null&&truckData[truckEditIndex])?truckData[truckEditIndex]:null;
   const now=new Date();
   const timeNow=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
   // Known trucks for autocomplete (latest entry per truck)
@@ -2509,34 +2511,34 @@ function renderTruckLog(){
       <td><span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${c.sBg};color:${c.sClr};white-space:nowrap">${c.status}</span></td>
     </tr>`).join('');
   const recent=truckData.slice().reverse().slice(0,15);
-  const recentRows=recent.map((e,i)=>`
-    <tr>
+  const recentRows=recent.map((e,i)=>{const idx=truckData.length-1-i;const isEd=idx===truckEditIndex;return `
+    <tr${isEd?' style="background:var(--amber-light)"':''}>
       <td>${e.date}<div style="font-size:10px;color:var(--ink-light)">${e.time||''}</div></td>
       <td style="font-weight:600">${e.truck}</td>
       <td>${e.name||'—'}${e.mobile?`<div style="font-size:10px;color:var(--ink-light)">📱 ${e.mobile}</div>`:''}</td>
       <td style="font-size:11px">${e.driver||'—'}</td>
       <td><span class="tag ${e.fuel==='HSD'?'tag-hsd':'tag-ms'}">${e.fuel}</span></td>
       <td class="right">${fmtL(e.qty)}</td>
-      <td><button onclick="removeTruckEntry(${truckData.length-1-i})" class="rm-btn">✕</button></td>
-    </tr>`).join('');
+      <td style="white-space:nowrap"><button onclick="editTruckEntry(${idx})" class="rm-btn" title="Edit entry">✎</button> <button onclick="removeTruckEntry(${idx})" class="rm-btn" title="Delete entry">✕</button></td>
+    </tr>`;}).join('');
   document.getElementById('stepContent').innerHTML=`
-  <div class="card"><div class="card-title">🚚 Log Truck Entry</div>
+  <div class="card"${ed?' style="border-left:3px solid var(--amber)"':''}><div class="card-title">${ed?'✎ Edit Truck Entry':'🚚 Log Truck Entry'}</div>
     <div class="grid3" style="margin-bottom:10px">
-      <div class="field"><div class="lbl">Date</div><input type="date" id="trk_date" value="${todayKey0()}" max="${todayKey0()}" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"></div>
-      <div class="field"><div class="lbl">Time</div><input type="time" id="trk_time" value="${timeNow}" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"></div>
-      <div class="field"><div class="lbl">Truck Number</div><input type="text" id="trk_truck" list="truckDatalist" placeholder="UP65 AB 1234" oninput="truckAutoFill()" style="text-transform:uppercase"><datalist id="truckDatalist">${dl}</datalist></div>
+      <div class="field"><div class="lbl">Date</div><input type="date" id="trk_date" value="${ed?offEsc(ed.date||todayKey0()):todayKey0()}" max="${todayKey0()}" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"></div>
+      <div class="field"><div class="lbl">Time</div><input type="time" id="trk_time" value="${ed?offEsc(ed.time||timeNow):timeNow}" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"></div>
+      <div class="field"><div class="lbl">Truck Number</div><input type="text" id="trk_truck" list="truckDatalist" value="${ed?offEsc(ed.truck||''):''}" placeholder="UP65 AB 1234" oninput="truckAutoFill()" style="text-transform:uppercase"><datalist id="truckDatalist">${dl}</datalist></div>
     </div>
     <div class="grid3" style="margin-bottom:10px">
-      <div class="field"><div class="lbl">Customer Name</div><input type="text" id="trk_name" placeholder="Customer / firm name"></div>
-      <div class="field"><div class="lbl">Mobile Number</div><input type="tel" id="trk_mobile" placeholder="10-digit mobile" maxlength="10"></div>
-      <div class="field"><div class="lbl">Driver Name</div><input type="text" id="trk_driver" placeholder="Driver (optional)"></div>
+      <div class="field"><div class="lbl">Customer Name</div><input type="text" id="trk_name" value="${ed?offEsc(ed.name||''):''}" placeholder="Customer / firm name"></div>
+      <div class="field"><div class="lbl">Mobile Number</div><input type="tel" id="trk_mobile" value="${ed?offEsc(ed.mobile||''):''}" placeholder="10-digit mobile" maxlength="10"></div>
+      <div class="field"><div class="lbl">Driver Name</div><input type="text" id="trk_driver" value="${ed?offEsc(ed.driver||''):''}" placeholder="Driver (optional)"></div>
     </div>
     <div class="grid2" style="margin-bottom:12px">
-      <div class="field"><div class="lbl">Fuel</div><select id="trk_fuel" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"><option value="HSD">HSD (Diesel)</option><option value="MS">MS (Petrol)</option></select></div>
-      <div class="field"><div class="lbl">Fuel Taken (L)</div><input type="number" id="trk_qty" placeholder="0" step="0.01"></div>
+      <div class="field"><div class="lbl">Fuel</div><select id="trk_fuel" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%;outline:none"><option value="HSD" ${ed&&ed.fuel==='MS'?'':'selected'}>HSD (Diesel)</option><option value="MS" ${ed&&ed.fuel==='MS'?'selected':''}>MS (Petrol)</option></select></div>
+      <div class="field"><div class="lbl">Fuel Taken (L)</div><input type="number" id="trk_qty" value="${ed&&ed.qty!=null?offEsc(String(ed.qty)):''}" placeholder="0" step="0.01"></div>
     </div>
-    <button class="btn-primary" onclick="addTruckEntry()">+ Add Truck Entry</button>
-    <div id="trkMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>
+    ${ed?`<button class="btn-primary" onclick="saveTruckEdit()">💾 Save Changes</button> <button class="btn-secondary" onclick="cancelTruckEdit()" style="margin-left:6px">Cancel</button>`:`<button class="btn-primary" onclick="addTruckEntry()">+ Add Truck Entry</button>`}
+    <div id="trkMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px">${ed?'<span style="color:var(--amber)">✎ Editing this entry — change values and Save.</span>':''}</div>
   </div>
   ${gone.length||lacking.length?`
   <div class="card" style="border-left:3px solid var(--ioc-red)">
@@ -2604,9 +2606,39 @@ async function addTruckEntry(){
 
 async function removeTruckEntry(i){
   if(!confirm('Remove this truck entry?'))return;
+  truckEditIndex=null;      // indices shift on splice — cancel any in-progress edit
   truckData.splice(i,1);
   await cloudSet(STORE_KEY_TRUCK,truckData);
   renderTruckLog();
+}
+
+// ── Edit an existing truck entry (loads it back into the form above) ────────────
+function editTruckEntry(i){
+  if(i==null||i<0||i>=truckData.length)return;
+  truckEditIndex=i;
+  renderTruckLog();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function cancelTruckEdit(){truckEditIndex=null;renderTruckLog();}
+async function saveTruckEdit(){
+  if(truckEditIndex==null||truckEditIndex>=truckData.length){truckEditIndex=null;renderTruckLog();return;}
+  const truck=gs('trk_truck').toUpperCase();
+  const qty=gv('trk_qty');
+  if(!truck){alert('Enter truck number');return;}
+  if(!qty){alert('Enter fuel quantity');return;}
+  const mobile=gs('trk_mobile');
+  if(mobile&&!/^\d{10}$/.test(mobile)){alert('Mobile number must be 10 digits');return;}
+  const prev=truckData[truckEditIndex]||{};
+  truckData[truckEditIndex]={...prev,
+    date:gs('trk_date')||todayKey0(),time:gs('trk_time'),truck,
+    name:gs('trk_name'),mobile,driver:gs('trk_driver'),
+    fuel:document.getElementById('trk_fuel').value,qty,
+    editedAt:new Date().toISOString()};
+  truckEditIndex=null;
+  await cloudSet(STORE_KEY_TRUCK,truckData);
+  renderTruckLog();
+  const el=document.getElementById('trkMsg');
+  if(el){el.style.color='var(--green)';el.textContent=`✅ Entry updated for ${truck}!`;setTimeout(()=>el.textContent='',3000);}
 }
 
 // ── MODULE 6: CREDIT SALES ────────────────────────────────────────────────────
