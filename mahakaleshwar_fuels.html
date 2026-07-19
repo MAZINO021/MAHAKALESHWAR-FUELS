@@ -720,6 +720,22 @@ const NOZZLES_MS=['M1','M2','M3','M4'];
 const DEFAULT_STAFF=['BHOJU YADAV','BRIJESH TIWARI','ASHOK YADAV','MANOJ KUMAR','GULAB YADAV',
   'ANKIT DUBEY','GOVIND KANAUJIA','ROHIT KUMAR','SAFAI KARMI','SUBHASH YADAV',
   'AAMBIKA YADAV','RAMJI YADAV','MAHESH KANAUJIA','BACHAN MALI'];
+// ── STAFF PAYOUT — daily wage (= monthly salary ÷ 30). Owner-set. ─────────────
+// Monthly payout = rate × (work-days + PAYOUT_HOLIDAYS), where work-days come from
+// attendance (Present 1 · Double 2 · Half 0.5 · Absent 0). The +2 holidays are
+// added only when a month is finalised (month-end), never mid-month.
+const STAFF_PAYOUT_RATE={
+  'BHOJU YADAV':500,'BRIJESH TIWARI':433.33,'ASHOK YADAV':316.66,'MANOJ KUMAR':316.66,
+  'GULAB YADAV':200,'ANKIT DUBEY':400,'GOVIND KANAUJIA':300,'ROHIT KUMAR':300,
+  'SAFAI KARMI':133.33,'SUBHASH YADAV':300,'AAMBIKA YADAV':300,'RAMJI YADAV':300,
+  'MAHESH KANAUJIA':300,'BACHAN MALI':166.66,'RINKU TIWARI':100
+};
+const PAYOUT_HOLIDAYS=2;   // paid holiday days added per FULL month
+// Advance names in Daily Sales are typed freehand — fold the known variants onto the
+// canonical staff name so each person's advance totals correctly. (The "ASHOK YADAV
+// FILLER/FILER/||" variants belong to the Ashok who LEFT, so they are NOT mapped.)
+const ADV_NAME_ALIAS={'BHOJU JI':'BHOJU YADAV','SUBHAS':'SUBHASH YADAV','SWEEPER':'SAFAI KARMI'};
+function canonAdvName(n){const k=String(n||'').trim().toUpperCase();return ADV_NAME_ALIAS[k]||k;}
 const HSD_DAY0=[380,326,459,519,333,336,379,336];
 const MS_DAY0=[340,299,433,389];
 const HSD_MARGIN=2.5, MS_MARGIN=3.9;
@@ -1879,6 +1895,43 @@ function editSavedRecord(date){
 }
 
 // ── MODULE 2: ATTENDANCE (with date picker + add/remove staff) ─────────────────
+// ── STAFF PAYOUT COMPUTATION — attendance × daily rate − advances (from recon) ──
+function attDayWeight(status){return status==='present'?1:status==='double'?2:status==='half'?0.5:0;}
+function staffWorkDays(name,ym){
+  let d=0;
+  Object.keys(attData).filter(k=>k.startsWith(ym)).forEach(k=>{
+    const s=attData[k]&&attData[k][name];
+    if(s&&s.status)d+=attDayWeight(s.status);
+  });
+  return d;
+}
+// A staff's advances for a month, summed from Daily Sales records (aliases folded in).
+function staffAdvance(name,ym){
+  const target=String(name||'').trim().toUpperCase();
+  let a=0;
+  (cloudData.records||[]).filter(r=>String(r.date||'').startsWith(ym)).forEach(r=>{
+    (r.advItems||[]).forEach(x=>{ if(canonAdvName(x.name)===target)a+=Number(x.amt)||0; });
+  });
+  return +a.toFixed(2);
+}
+// finalMode=true adds the +2 holiday days (month-end final payout).
+function payoutSummary(ym,finalMode){
+  return staffList.map(name=>{
+    const rate=STAFF_PAYOUT_RATE[name]||0;
+    const wd=staffWorkDays(name,ym);
+    const paidDays=wd+(finalMode?PAYOUT_HOLIDAYS:0);
+    const gross=+(rate*paidDays).toFixed(2);
+    const adv=staffAdvance(name,ym);
+    return {name,rate,workDays:wd,paidDays,gross,adv,net:+(gross-adv).toFixed(2),noRate:!(name in STAFF_PAYOUT_RATE)};
+  });
+}
+// A month is auto-"complete" (final, with +2) once it is earlier than the current month.
+function monthIsComplete(ym){return ym<todayKey0().slice(0,7);}
+
+let payoutMonth=todayKey0().slice(0,7);   // month shown in the payout summary
+let payoutFinal=null;                      // null = auto (complete months final), else forced bool
+function attFinalOn(){return payoutFinal!=null?payoutFinal:monthIsComplete(payoutMonth);}
+
 function renderAttendance(){
   document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="backToModules()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
   renderAttContent();
@@ -1889,6 +1942,7 @@ function renderAttContent(){
   const allDates=Object.keys(attData).sort((a,b)=>b.localeCompare(a));
 
   document.getElementById('stepContent').innerHTML=`
+  ${attPayoutCard()}
   <div class="card">
     <div class="card-title">📅 Attendance — ${dateKey}</div>
     <div class="grid2" style="margin-bottom:14px">
@@ -1902,7 +1956,7 @@ function renderAttContent(){
     </div>
 
     <div style="overflow-x:auto"><table class="rtable">
-      <thead><tr><th>Staff</th><th>Status</th><th>Advance (₹)</th><th>Note</th><th></th></tr></thead>
+      <thead><tr><th>Staff</th><th>Status</th><th>Note</th><th></th></tr></thead>
       <tbody>
       ${staffList.map((name,i)=>{
         const s=saved[name]||{};
@@ -1917,7 +1971,6 @@ function renderAttContent(){
               <option value="half" ${s.status==='half'?'selected':''}>⏳ Half Day</option>
             </select>
           </td>
-          <td><input type="number" id="att_adv_${i}" value="${s.adv||''}" step="0.01" placeholder="0" style="width:90px;padding:5px 8px;border:1px solid var(--ioc-border);border-radius:6px;font-size:12px;background:#fff;color:var(--ink);outline:none"></td>
           <td><input type="text" id="att_note_${i}" value="${s.note||''}" placeholder="Optional" style="padding:5px 8px;border:1px solid var(--ioc-border);border-radius:6px;font-size:12px;background:#fff;color:var(--ink);outline:none;min-width:120px"></td>
           <td><button class="rm-btn" onclick="removeStaff('${name.replace(/'/g,"\\'")}')">✕</button></td>
         </tr>`;
@@ -1949,10 +2002,6 @@ function renderAttContent(){
                 ✅ ${counts.present} present · ❌ ${counts.absent} absent · ⏰ ${counts.double} double · ⏳ ${counts.half} half
               </div>
             </div>
-            <div style="text-align:right;flex-shrink:0">
-              <div style="font-size:11px;color:var(--ink-light)">Advance</div>
-              <div style="font-size:14px;font-weight:700;color:var(--ioc-red)">₹${fmt(totalAdv)}</div>
-            </div>
           </div>`;
         }).join('')}
       </div>
@@ -1961,6 +2010,44 @@ function renderAttContent(){
 
   <!-- DETAIL VIEW -->
   <div id="attDetailView"></div>`;
+  renderAttPayout();
+}
+
+// ── Monthly payout & advances summary (derived; edits stay in Daily Sales) ──────
+function attPayoutCard(){
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <div class="card-title" style="margin:0">💵 Monthly Payout & Advances</div>
+      <input type="month" id="attPayoutMonth" value="${payoutMonth}" max="${todayKey0().slice(0,7)}" onchange="payoutMonth=this.value;payoutFinal=null;renderAttPayout()" style="padding:6px 10px;font-size:12px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);outline:none">
+    </div>
+    <div id="attPayoutBox"></div>
+  </div>`;
+}
+function renderAttPayout(){
+  const box=document.getElementById('attPayoutBox');if(!box)return;
+  const ym=payoutMonth,final=attFinalOn();
+  const rows=payoutSummary(ym,final).sort((a,b)=>b.net-a.net);
+  const tot=rows.reduce((t,r)=>{t.gross+=r.gross;t.adv+=r.adv;t.net+=r.net;t.pd+=r.paidDays;return t;},{gross:0,adv:0,net:0,pd:0});
+  const complete=monthIsComplete(ym);
+  box.innerHTML=`
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink);cursor:pointer">
+        <input type="checkbox" ${final?'checked':''} onchange="payoutFinal=this.checked;renderAttPayout()"> Month-end — add +${PAYOUT_HOLIDAYS} holidays (final payout)
+      </label>
+      <span style="font-size:11px;color:${final?'var(--green)':'var(--ink-light)'}">${final?`Final · +${PAYOUT_HOLIDAYS} holiday days included`:'Running · holidays not added yet'}${complete&&payoutFinal===null?' (auto — month complete)':''}</span>
+    </div>
+    <div style="overflow-x:auto"><table class="rtable">
+      <thead><tr><th>Staff</th><th class="right">Days${final?' +'+PAYOUT_HOLIDAYS:''}</th><th class="right">Total Payout</th><th class="right">Advance</th><th class="right">Net</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td style="font-weight:600">${r.name}${r.noRate?' <span style="font-size:9px;color:var(--ioc-red);font-weight:700">NO RATE</span>':''}</td>
+        <td class="right">${r.paidDays}</td>
+        <td class="right" style="font-weight:700;color:var(--ioc-navy)">₹${fmt(r.gross)}</td>
+        <td class="right" style="color:var(--ioc-red)">${r.adv?'₹'+fmt(r.adv):'—'}</td>
+        <td class="right" style="font-weight:700;color:${r.net>=0?'var(--green)':'var(--ioc-red)'}">₹${fmt(r.net)}</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr><td><b>TOTAL</b></td><td class="right"><b>${(+tot.pd.toFixed(1))}</b></td><td class="right" style="color:var(--ioc-navy)"><b>₹${fmt(tot.gross)}</b></td><td class="right" style="color:var(--ioc-red)"><b>₹${fmt(tot.adv)}</b></td><td class="right" style="color:var(--green)"><b>₹${fmt(tot.net)}</b></td></tr></tfoot>
+    </table></div>
+    <div style="font-size:10px;color:var(--ink-light);margin-top:8px">Payout = daily rate × (work-days${final?' + '+PAYOUT_HOLIDAYS+' holidays':''}) · Advances pulled from Daily Sales · Net = Payout − Advance. To fix an advance, edit that day's Daily Sales entry.</div>`;
 }
 
 function viewAttDetail(date){
@@ -1976,7 +2063,7 @@ function viewAttDetail(date){
       double:'<span style="padding:3px 8px;background:#fff8e1;color:var(--amber);border-radius:4px;font-size:11px;font-weight:600">⏰ Double</span>',
       half:'<span style="padding:3px 8px;background:#e3f2fd;color:var(--ioc-navy);border-radius:4px;font-size:11px;font-weight:600">⏳ Half</span>'
     }[s.status]:'<span style="color:var(--ink-light);font-size:11px">—</span>';
-    return `<tr><td style="font-weight:600">${name}</td><td>${statusBadge}</td><td class="right">${s.adv?'₹'+fmt(s.adv):'—'}</td><td style="color:var(--ink-light);font-size:11px">${s.note||'—'}</td></tr>`;
+    return `<tr><td style="font-weight:600">${name}</td><td>${statusBadge}</td><td style="color:var(--ink-light);font-size:11px">${s.note||'—'}</td></tr>`;
   }).join('');
   detailEl.innerHTML=`
     <div class="card">
@@ -1992,12 +2079,11 @@ function viewAttDetail(date){
           <div style="padding:10px;background:#e6f7e9;border-radius:var(--r);text-align:center"><div style="font-size:10px;color:var(--ink-light);font-weight:700">Present</div><div style="font-size:18px;font-weight:700;color:var(--green)">${counts.present}</div></div>
           <div style="padding:10px;background:#ffe6e6;border-radius:var(--r);text-align:center"><div style="font-size:10px;color:var(--ink-light);font-weight:700">Absent</div><div style="font-size:18px;font-weight:700;color:var(--ioc-red)">${counts.absent}</div></div>
           <div style="padding:10px;background:#fff8e1;border-radius:var(--r);text-align:center"><div style="font-size:10px;color:var(--ink-light);font-weight:700">Double</div><div style="font-size:18px;font-weight:700;color:var(--amber)">${counts.double}</div></div>
-          <div style="padding:10px;background:#e3f2fd;border-radius:var(--r);text-align:center"><div style="font-size:10px;color:var(--ink-light);font-weight:700">Half Day</div><div style="font-size:18px;font-weight:700;color:var(--ioc-navy)">${counts.half}</div></div>
-          <div style="padding:10px;background:var(--ioc-navy-light);border-radius:var(--r);text-align:center"><div style="font-size:10px;color:var(--ink-light);font-weight:700">Total Advance</div><div style="font-size:18px;font-weight:700;color:var(--ioc-red)">₹${fmt(totalAdv)}</div></div>`;
+          <div style="padding:10px;background:#e3f2fd;border-radius:var(--r);text-align:center"><div style="font-size:10px;color:var(--ink-light);font-weight:700">Half Day</div><div style="font-size:18px;font-weight:700;color:var(--ioc-navy)">${counts.half}</div></div>`;
         })()}
       </div>
       <div style="overflow-x:auto"><table class="rtable">
-        <thead><tr><th>Staff</th><th>Status</th><th>Advance</th><th>Note</th></tr></thead>
+        <thead><tr><th>Staff</th><th>Status</th><th>Note</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
       <div class="btn-row" style="margin-top:12px">
