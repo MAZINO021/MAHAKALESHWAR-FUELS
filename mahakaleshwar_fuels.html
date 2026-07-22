@@ -936,6 +936,17 @@ function sanitizeRecords(){
   });
 }
 
+// Firebase RTDB returns an ARRAY (not an object) whenever the child keys look like
+// sequential integers — which is exactly what our roll numbers 1..N are. Normalise
+// it back to a roll-keyed object so the Offer Panel doesn't come up empty.
+function normalizeOffers(off){
+  if(!off||typeof off!=='object')return {};
+  if(!Array.isArray(off))return off;
+  const out={};
+  off.forEach((a,i)=>{ if(a&&typeof a==='object')out[String(a.roll!=null?a.roll:i)]=a; });
+  return out;
+}
+
 async function loadCloud(){
   syncStatus('loading','Connecting to Firebase…');
   try{
@@ -952,7 +963,7 @@ async function loadCloud(){
     const test=await cloudGet(STORE_KEY_TESTING);if(test)testingData=test;
     const depO=await cloudGet(DEPOSIT_KEY);if(depO)ownerDeposits=depO;
     const trk=await cloudGet(STORE_KEY_TRUCK);if(trk)truckData=trk;
-    const off=await cloudGet(STORE_KEY_OFFERS);offersData=(off&&typeof off==='object'&&!Array.isArray(off))?off:{};
+    const off=await cloudGet(STORE_KEY_OFFERS);offersData=normalizeOffers(off);
     const offs=await cloudGet(STORE_KEY_OFFERSET);if(offs&&typeof offs==='object')offerSettings=offs;
     const vAl=await cloudGet('mf_vehicle_aliases'),vPh=await cloudGet('mf_vehicle_phones'),vCa=await cloudGet('mf_vehicle_calls');
     if(window.VR&&VR.hydrate)VR.hydrate(vAl,vPh,vCa);
@@ -977,7 +988,7 @@ async function loadCloud(){
       const cred=JSON.parse(localStorage.getItem(STORE_KEY_CREDIT)||'null');if(cred)creditData=cred;
       const depO=JSON.parse(localStorage.getItem(DEPOSIT_KEY)||'null');if(depO)ownerDeposits=depO;
       const trk=JSON.parse(localStorage.getItem(STORE_KEY_TRUCK)||'null');if(trk)truckData=trk;
-      const off=JSON.parse(localStorage.getItem(STORE_KEY_OFFERS)||'null');offersData=(off&&typeof off==='object'&&!Array.isArray(off))?off:{};
+      const off=JSON.parse(localStorage.getItem(STORE_KEY_OFFERS)||'null');offersData=normalizeOffers(off);
       const offs=JSON.parse(localStorage.getItem(STORE_KEY_OFFERSET)||'null');if(offs&&typeof offs==='object')offerSettings=offs;
       const rcn=JSON.parse(localStorage.getItem(STORE_KEY_RECON)||'null');if(rcn){reconData=rcn;_creditAliasMap=null;}
       syncStatus('err','⚠️ Offline — using cached data. Tap to retry.');
