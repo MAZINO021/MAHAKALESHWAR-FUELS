@@ -763,10 +763,10 @@ const CREDIT_BASE_DATE='2026-07-14';
 const CREDIT_BASE=[
   // OUTSTANDING (active accounts) — ₹3,15,242
   {name:'RAMBRIKSH YADAV',amt:149355,cat:'OUTSTANDING',alias:['rambriksh yadav ji','ramvriksh yadav ji','ramvriksh yadav','rambriksh yadav ji khajuri']},
-  {name:'ST. NICHOLAS SCHOOL',amt:6599,cat:'OUTSTANDING',alias:['st nicholes school','st nicholesh school','saint nicholas school']},
+  {name:'ST. NICHOLAS SCHOOL',amt:6599,cat:'OUTSTANDING',alias:['st nicholes school','st nicholesh school','saint nicholas school','st nocholesh school']},
   {name:'RAJU ROAD LINES',amt:15000,cat:'OUTSTANDING',alias:['raju road line','raju road liner','raju road road lince','raju rode lines','santosh raju road lines','santosh raju rode lines','santosh raju road line','rakesh raju road lines']},
   {name:'PAPPU YADAV',amt:28000,cat:'OUTSTANDING',alias:['pappu yadav sikandra','pappu yadav ji','ppapu yadav','pappu yadav bhattha']},
-  {name:'KISHAN (MANOJ ROAD LINES)',amt:36422,cat:'OUTSTANDING',alias:['kishan chauhan manoj rode lines','kishan manoj road lines','kishan chauhan manoj road lines','kishan chauhan manoj rode line s','kishan chauhan','kishan manoj rode lines','manoj road lines','manoj road liner','manoj road line','manoj rod line']},
+  {name:'KISHAN (MANOJ ROAD LINES)',amt:36422,cat:'OUTSTANDING',alias:['kishan chauhan manoj rode lines','kishan manoj road lines','kishan chauhan manoj road lines','kishan chauhan manoj rode line s','kishan chauhan','kishan manoj rode lines','manoj road lines','manoj road liner','manoj road line','manoj rod line','kishan manoj road lince']},
   {name:'SAHAB BADIBARI',amt:3100,cat:'OUTSTANDING',alias:['sahab badihari']},
   {name:'RAMAWADH YADAV',amt:1200,cat:'OUTSTANDING',alias:['ramavadh yadav ji','ramavadh yadav','ramawad yadav','ramawad yadav nasirpur']},
   {name:'ANIL BADIHARI',amt:48591,cat:'OUTSTANDING',alias:['anil badihari ji']},
@@ -797,11 +797,22 @@ function activeRecon(){
   if(reconData&&Array.isArray(reconData.accounts)&&reconData.accounts.length&&/^\d{4}-\d{2}-\d{2}$/.test(reconData.date||''))return reconData;
   return {date:CREDIT_BASE_DATE,accounts:CREDIT_BASE};
 }
+// Misspellings found in live daily-sales data that the recon's own alias lists miss.
+// These are applied ON TOP of the recon aliases so a typo can never orphan a payment
+// again even if someone re-snapshots the recon. Audited 03 Aug 2026 — each of these
+// had a real payment landing on a ghost account instead of reducing the real one.
+const CREDIT_EXTRA_ALIAS={
+  'st nocholesh school':'ST. NICHOLAS SCHOOL',      // ₹3,000 payment was orphaned
+  'kishan manoj road lince':'KISHAN (MANOJ ROAD LINES)', // ₹8,200 payment was orphaned
+  'gillu chhatriyapr':'GILLU CHHATRIYAPAR',         // duplicate account, same person
+  'gillu chhatariyapr':'GILLU CHHATRIYAPAR',        // third spelling, seen 20 May
+};
 let _creditAliasMap=null;
 function creditAlias(k){
   if(!_creditAliasMap){
     _creditAliasMap={};
     activeRecon().accounts.forEach(b=>{const ck=creditKeyOf(b.name);_creditAliasMap[ck]=ck;(b.alias||[]).forEach(a=>{_creditAliasMap[creditKeyOf(a)]=ck;});});
+    Object.entries(CREDIT_EXTRA_ALIAS).forEach(([bad,good])=>{_creditAliasMap[creditKeyOf(bad)]=creditKeyOf(good);});
   }
   return _creditAliasMap[k]||k;
 }
@@ -2819,7 +2830,9 @@ function renderCreditSales(){
   const unlisted=list.filter(p=>!p.listed);
 
   const R=activeRecon();
-  const totalDue=listed.reduce((a,p)=>a+Math.max(0,p.credit-p.paid),0);
+  // No Math.max(0,…) here — an overpaid account is real money and must pull the
+  // total DOWN. Clamping it to zero silently hid a ₹3,000 overpayment (audit 03 Aug 2026).
+  const totalDue=listed.reduce((a,p)=>a+(p.credit-p.paid),0);
   const newCredit=listed.reduce((a,p)=>a+(p.credit-(p.base||0)),0);
   const totalPaid=listed.reduce((a,p)=>a+p.paid,0);
   const totalBase=R.accounts.reduce((a,b)=>a+(+b.amt||0),0);
@@ -3901,7 +3914,7 @@ function renderOwnerCreditInto(target){
   const today=todayKey0();
   const cp=computeCreditParties();
   const parties={};Object.values(cp).forEach(p=>{parties[p.display]={total:p.credit,paid:p.paid};});
-  const totalDue=Object.values(parties).reduce((a,p)=>a+Math.max(0,p.total-p.paid),0);
+  const totalDue=Object.values(parties).reduce((a,p)=>a+(p.total-p.paid),0);   // no clamp — overpayments must net off
   const rows=Object.entries(parties).sort(([,a],[,b])=>(b.total-b.paid)-(a.total-a.paid)).map(([n,p])=>`<tr style="cursor:pointer" onclick="showOwnerCreditDetailIn('${n.replace(/'/g,"\\'")}','ownerSubTabContent')"><td style="font-weight:600">${n}</td><td class="right">₹${fmt(p.total)}</td><td class="right" style="color:var(--green)">₹${fmt(p.paid)}</td><td class="right" style="color:${p.total-p.paid>0?'var(--ioc-red)':'var(--green)'};font-weight:700">₹${fmt(p.total-p.paid)}</td></tr>`).join('');
   el.innerHTML=`
     <div class="card"><div class="card-title">📝 Credit Outstanding — ₹${fmt(totalDue)}</div>
@@ -4312,7 +4325,7 @@ function showPortfolioResult(hsdRsp,msRsp){
 
   // Credit outstanding (debt) — canonical computation (matches Credit tab)
   const _cp=computeCreditParties();
-  const creditDue=Object.values(_cp).reduce((a,p2)=>a+Math.max(0,p2.credit-p2.paid),0);
+  const creditDue=Object.values(_cp).reduce((a,p2)=>a+(p2.credit-p2.paid),0);   // no clamp — overpayments must net off
   const netWorth=grandTotal+creditDue; // credit due is an asset
 
   // Growth % vs previous month
@@ -4389,7 +4402,7 @@ function renderOwnerCredit(fromDate='',toDate=''){
   const f=fromDate||'',t2=toDate||today;
   const filtered=f?creditData.filter(t=>t.date>=f&&t.date<=t2):creditData;
   const parties={};filtered.forEach(t=>{if(!parties[t.party])parties[t.party]={total:0,paid:0};if(t.type==='credit')parties[t.party].total+=t.amt;else parties[t.party].paid+=t.amt;});
-  const totalDue=Object.values(parties).reduce((a,p)=>a+Math.max(0,p.total-p.paid),0);
+  const totalDue=Object.values(parties).reduce((a,p)=>a+(p.total-p.paid),0);   // no clamp — overpayments must net off
   const rows=Object.entries(parties).map(([n,p])=>`<tr style="cursor:pointer" onclick="showOwnerCreditDetail('${n.replace(/'/g,"\\'")}')"><td style="font-weight:600">${n}</td><td class="right">₹${fmt(p.total)}</td><td class="right" style="color:var(--green)">₹${fmt(p.paid)}</td><td class="right" style="color:${p.total-p.paid>0?'var(--ioc-red)':'var(--green)'};font-weight:700">₹${fmt(p.total-p.paid)}</td></tr>`).join('');
   document.getElementById('ownerTabContent').innerHTML=`
     <div class="card"><div class="card-title">📝 Credit Outstanding</div>
@@ -5611,7 +5624,7 @@ function buildCreditRecords(f,t2){
     if(t.type==='credit')parties[t.party].total+=t.amt;
     else parties[t.party].paid+=t.amt;
   });
-  const totalDue=Object.values(parties).reduce((a,p)=>a+Math.max(0,p.total-p.paid),0);
+  const totalDue=Object.values(parties).reduce((a,p)=>a+(p.total-p.paid),0);   // no clamp — overpayments must net off
   const rows=entries.map(c=>`<tr>
     <td style="font-weight:600">${c.date}</td>
     <td style="font-weight:600">${c.party}</td>
