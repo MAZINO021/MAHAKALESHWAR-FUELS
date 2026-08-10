@@ -764,13 +764,16 @@ const CREDIT_BASE=[
   // OUTSTANDING (active accounts) — ₹3,15,242
   {name:'RAMBRIKSH YADAV',amt:149355,cat:'OUTSTANDING',alias:['rambriksh yadav ji','ramvriksh yadav ji','ramvriksh yadav','rambriksh yadav ji khajuri']},
   {name:'ST. NICHOLAS SCHOOL',amt:6599,cat:'OUTSTANDING',alias:['st nicholes school','st nicholesh school','saint nicholas school','st nocholesh school']},
-  {name:'RAJU ROAD LINES',amt:15000,cat:'OUTSTANDING',alias:['raju road line','raju road liner','raju road road lince','raju rode lines','santosh raju road lines','santosh raju rode lines','santosh raju road line','rakesh raju road lines']},
+  // Merged 03 Aug 2026 — owner confirmed SINTU and RAJU ROAD LINES are ONE party.
+  // amt = old 15000 + old SINTU 26975. No Sintu-named txn has ever been entered;
+  // every fill/payment comes in as "RAJU ROAD LINES". Recon total is unchanged.
+  {name:'RAJU ROAD LINES',amt:41975,cat:'OUTSTANDING',alias:['raju road line','raju road liner','raju road road lince','raju rode lines','santosh raju road lines','santosh raju rode lines','santosh raju road line','rakesh raju road lines','sintu yadav ji','sintu yadav','raju road lines sintu','sintu','raju road lines sintu yadav','santosh sintu']},
   {name:'PAPPU YADAV',amt:28000,cat:'OUTSTANDING',alias:['pappu yadav sikandra','pappu yadav ji','ppapu yadav','pappu yadav bhattha']},
   {name:'KISHAN (MANOJ ROAD LINES)',amt:36422,cat:'OUTSTANDING',alias:['kishan chauhan manoj rode lines','kishan manoj road lines','kishan chauhan manoj road lines','kishan chauhan manoj rode line s','kishan chauhan','kishan manoj rode lines','manoj road lines','manoj road liner','manoj road line','manoj rod line','kishan manoj road lince']},
   {name:'SAHAB BADIBARI',amt:3100,cat:'OUTSTANDING',alias:['sahab badihari']},
   {name:'RAMAWADH YADAV',amt:1200,cat:'OUTSTANDING',alias:['ramavadh yadav ji','ramavadh yadav','ramawad yadav','ramawad yadav nasirpur']},
   {name:'ANIL BADIHARI',amt:48591,cat:'OUTSTANDING',alias:['anil badihari ji']},
-  {name:'RAJU ROAD LINES (SINTU)',amt:26975,cat:'OUTSTANDING',alias:['sintu yadav ji','sintu yadav','raju road lines sintu']},
+  // (RAJU ROAD LINES (SINTU) ₹26,975 folded into RAJU ROAD LINES above on 03 Aug 2026)
   // SUNDRY — ₹21,618
   {name:'KALLU',amt:5118,cat:'SUNDRY'},
   {name:'ANIL TRACTOR',amt:5500,cat:'SUNDRY'},
@@ -806,6 +809,14 @@ const CREDIT_EXTRA_ALIAS={
   'kishan manoj road lince':'KISHAN (MANOJ ROAD LINES)', // ₹8,200 payment was orphaned
   'gillu chhatriyapr':'GILLU CHHATRIYAPAR',         // duplicate account, same person
   'gillu chhatariyapr':'GILLU CHHATRIYAPAR',        // third spelling, seen 20 May
+  'achchhelal yadav':'ACHCHHE LAL YADAV',           // ₹8,000 payment 08 Aug was orphaned
+  // Sintu = Raju Road Lines, one party (owner confirmed 03 Aug 2026). Kept here so a
+  // recon re-snapshot can never split them back into two books.
+  'sintu yadav':'RAJU ROAD LINES',
+  'sintu yadav ji':'RAJU ROAD LINES',
+  'sintu':'RAJU ROAD LINES',
+  'raju road lines sintu':'RAJU ROAD LINES',
+  'raju road lines sintu yadav':'RAJU ROAD LINES',
 };
 let _creditAliasMap=null;
 function creditAlias(k){
