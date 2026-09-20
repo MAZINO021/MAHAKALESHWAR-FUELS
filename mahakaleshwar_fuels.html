@@ -864,7 +864,10 @@ async function initFirebase(){return;} // not needed with REST
 
 async function cloudGet(k){
   try{
-    const res=await fetch(`${FB_URL}/${k}.json`,{method:'GET',headers:{'Accept':'application/json'}});
+    // Cache-buster: a unique query param + no-store stops the browser/proxy from
+    // serving a stale cached copy of the Firebase GET (which showed the old recon
+    // as "connected" even after a fresh write). Every read now hits Firebase live.
+    const res=await fetch(`${FB_URL}/${k}.json?_=${Date.now()}`,{method:'GET',cache:'no-store',headers:{'Accept':'application/json'}});
     if(!res.ok)throw new Error('HTTP '+res.status);
     const val=await res.json();
     if(val!==null)localStorage.setItem(k,JSON.stringify(val));
