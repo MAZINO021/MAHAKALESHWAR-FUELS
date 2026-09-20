@@ -817,13 +817,9 @@ const CREDIT_EXTRA_ALIAS={
   'gillu chhatriyapr':'GILLU CHHATRIYAPAR',         // duplicate account, same person
   'gillu chhatariyapr':'GILLU CHHATRIYAPAR',        // third spelling, seen 20 May
   'achchhelal yadav':'ACHCHHE LAL YADAV',           // ₹8,000 payment 08 Aug was orphaned
-  // Sintu = Raju Road Lines, one party (owner confirmed 03 Aug 2026). Kept here so a
-  // recon re-snapshot can never split them back into two books.
-  'sintu yadav':'RAJU ROAD LINES',
-  'sintu yadav ji':'RAJU ROAD LINES',
-  'sintu':'RAJU ROAD LINES',
-  'raju road lines sintu':'RAJU ROAD LINES',
-  'raju road lines sintu yadav':'RAJU ROAD LINES',
+  // Sintu / Raju Road Lines SEPARATED 20/09/2026: the manager's latest (18/09) statement
+  // lists "Raju road lines" and "RAJU ROAD LINES( SINTU )" as two distinct accounts, so the
+  // earlier force-fold (all 'sintu…' → RAJU ROAD LINES) was removed. Now two recon accounts.
 };
 let _creditAliasMap=null;
 function creditAlias(k){
@@ -2896,6 +2892,10 @@ function computeCreditParties(){
       p.txns.push({date:t.date,type:'credit',amt:t.amt,note:t.note||'Manual',auto:false});
     }
   });
+  // DATA-DRIVEN: any party seen in daily sales/manual after the recon that isn't a
+  // recon account is auto-promoted to a first-class OUTSTANDING account — no manual
+  // "Add Person" step. Deposits under that name reduce it automatically.
+  Object.values(parties).forEach(p=>{ if(!p.listed){ p.listed=true; if(!p.cat)p.cat='OUTSTANDING'; } });
   return parties;
 }
 
@@ -2917,6 +2917,8 @@ function renderCreditSales(){
   const newCredit=listed.reduce((a,p)=>a+(p.credit-(p.base||0)),0);
   const totalPaid=listed.reduce((a,p)=>a+p.paid,0);
   const totalBase=R.accounts.reduce((a,b)=>a+(+b.amt||0),0);
+  const catTotal=c=>listed.filter(p=>(p.cat||'')===c).reduce((a,p)=>a+(p.credit-p.paid),0);
+  const outT=catTotal('OUTSTANDING'),sunT=catTotal('SUNDRY'),stuT=catTotal('STUCK ACCOUNT');
 
   const CAT_ORDER=['OUTSTANDING','SUNDRY','BAD DEBTERS','STUCK ACCOUNT',''];
   const CAT_LABEL={'OUTSTANDING':'🟢 Active Accounts','SUNDRY':'🟡 Sundry','BAD DEBTERS':'🔴 Bad Debtors','STUCK ACCOUNT':'🟠 Stuck Accounts','':'📁 Uncategorised'};
@@ -2950,29 +2952,40 @@ function renderCreditSales(){
   document.getElementById('stepContent').innerHTML=`
   <!-- INFO BANNER -->
   <div class="alert-info" style="margin-bottom:12px">
-    <b>📊 Base = Recon ${R.date}</b> (₹${fmt(totalBase)} across ${R.accounts.length} accounts). Balance = <b>Base + Credit − Deposit</b> — credits and deposits are auto-synced from Daily Sales from the recon date onward. You only enter <b>extra payments</b> here.
+    <b>📊 Current credit as of ${R.date}</b> — balances roll forward automatically from Daily Sales. New customers appear on their own; deposits reduce their balance. Nothing to maintain by hand.
   </div>
 
-  <!-- SUMMARY CARDS -->
-  <div class="grid3" style="margin-bottom:14px">
+  <!-- SUMMARY: CURRENT TOTAL + ACCOUNT COUNT -->
+  <div class="grid2" style="margin-bottom:8px">
     <div style="padding:14px;background:${totalDue>0?'#FFF5F5':'#f0fff4'};border-radius:var(--rl);border:1px solid ${totalDue>0?'var(--ioc-red)':'var(--green)'};text-align:center">
       <div style="font-size:10px;font-weight:700;color:${totalDue>0?'var(--ioc-red)':'var(--green)'};text-transform:uppercase;margin-bottom:4px">Total Outstanding</div>
-      <div style="font-size:20px;font-weight:700;color:${totalDue>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(totalDue)}</div>
+      <div style="font-size:22px;font-weight:700;color:${totalDue>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(totalDue)}</div>
     </div>
-    <div style="padding:14px;background:var(--ioc-red-light);border-radius:var(--rl);border:1px solid var(--ioc-red);text-align:center">
-      <div style="font-size:10px;font-weight:700;color:var(--ioc-red);text-transform:uppercase;margin-bottom:4px">Credit Since Recon</div>
-      <div style="font-size:20px;font-weight:700;color:var(--ioc-red)">₹${fmt(newCredit)}</div>
+    <div style="padding:14px;background:#fff;border-radius:var(--rl);border:1px solid var(--ioc-border);text-align:center">
+      <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase;margin-bottom:4px">Accounts</div>
+      <div style="font-size:22px;font-weight:700;color:var(--ink)">${listed.length}</div>
     </div>
-    <div style="padding:14px;background:#f0fff4;border-radius:var(--rl);border:1px solid var(--green);text-align:center">
-      <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:4px">Deposits Since Recon</div>
-      <div style="font-size:20px;font-weight:700;color:var(--green)">₹${fmt(totalPaid)}</div>
+  </div>
+  <!-- CATEGORY TOTALS -->
+  <div class="grid3" style="margin-bottom:14px">
+    <div style="padding:12px;background:#fff;border-radius:var(--rl);border:1px solid var(--ioc-border);text-align:center">
+      <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase;margin-bottom:2px">Outstanding</div>
+      <div style="font-size:16px;font-weight:700">₹${fmt(outT)}</div>
+    </div>
+    <div style="padding:12px;background:#fff;border-radius:var(--rl);border:1px solid var(--ioc-border);text-align:center">
+      <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase;margin-bottom:2px">Sundry</div>
+      <div style="font-size:16px;font-weight:700">₹${fmt(sunT)}</div>
+    </div>
+    <div style="padding:12px;background:#fff;border-radius:var(--rl);border:1px solid var(--ioc-border);text-align:center">
+      <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase;margin-bottom:2px">Stuck</div>
+      <div style="font-size:16px;font-weight:700">₹${fmt(stuT)}</div>
     </div>
   </div>
 
-  <!-- ADD PAYMENT ONLY -->
+  <!-- RECORD PAYMENT -->
   <div class="card">
     <div class="card-title">💰 Record Payment Received</div>
-    <div style="font-size:12px;color:var(--ink-light);margin-bottom:12px">Enter when a credit party pays you back. Credit entries are auto-fetched from daily sales.</div>
+    <div style="font-size:12px;color:var(--ink-light);margin-bottom:12px">Enter when a credit party pays you back. Credit is auto-fetched from Daily Sales.</div>
     <div class="grid2" style="margin-bottom:10px">
       <div class="field">
         <div class="lbl">Party Name</div>
@@ -2995,70 +3008,12 @@ function renderCreditSales(){
     <button class="btn-primary" onclick="addPaymentTxn()">✅ Record Payment</button>
   </div>
 
-  <!-- ADD PERSON / ACCOUNT -->
+  <!-- CUSTOMER BALANCES (data-driven, all parties) -->
   <div class="card">
-    <div class="card-title">➕ Add Person / Account</div>
-    <div style="font-size:12px;color:var(--ink-light);margin-bottom:12px">Add someone to your account list. New credit/deposit entries under this name (or its other spellings) will count on their account.</div>
-    <div class="grid2" style="margin-bottom:10px">
-      <div class="field">
-        <div class="lbl">Name</div>
-        <input type="text" id="na_name" placeholder="e.g. RAMU TRACTOR">
-      </div>
-      <div class="field">
-        <div class="lbl">Category</div>
-        <select id="na_cat" style="padding:8px 10px;font-size:13px;border:1px solid var(--ioc-border);border-radius:var(--r);background:#fff;color:var(--ink);width:100%">
-          <option>OUTSTANDING</option><option>SUNDRY</option><option>BAD DEBTERS</option><option>STUCK ACCOUNT</option>
-        </select>
-      </div>
-      <div class="field">
-        <div class="lbl">Opening Balance (₹) — 0 if new</div>
-        <input type="number" id="na_amt" placeholder="0" step="0.01">
-      </div>
-      <div class="field">
-        <div class="lbl">Other spellings (comma separated, optional)</div>
-        <input type="text" id="na_alias" placeholder="e.g. ramu ji, ramu tractor wala">
-      </div>
-    </div>
-    <button class="btn-primary" onclick="addAccountQuick()">➕ Add to Account List</button>
+    <div class="card-title">📋 Customer Balances (${listed.length})</div>
+    <div style="font-size:11px;color:var(--ink-light);margin-bottom:10px">Auto-updated from Daily Sales. Tap any account for its full ledger &amp; history.</div>
+    ${partyRows||'<div style="text-align:center;padding:20px;color:var(--ink-light)">No credit accounts yet.</div>'}
   </div>
-
-  <!-- RECON BASE -->
-  <div class="card">
-    <div class="card-title">⚙️ Recon Base <span style="font-size:11px;color:var(--ink-light);font-weight:400">${R.date} · ${R.accounts.length} accounts · ₹${fmt(totalBase)}${reconData?'':' · built-in seed'}</span></div>
-    <div style="font-size:12px;color:var(--ink-light);margin-bottom:10px">The recon is the <b>starting balance</b> of every account — all screens (credit panel, owner reports, net worth) count from it. Update it whenever you re-tally the register: balances restart from the new amounts and only entries on/after the recon date are counted.</div>
-    <div class="btn-row">
-      <button class="btn-secondary" onclick="renderReconEditor(false)">✏️ Edit Recon Base</button>
-      <button class="btn-secondary" onclick="renderReconEditor(true)">📸 New Recon from Current Balances</button>
-    </div>
-    <div id="reconEditor"></div>
-  </div>
-
-  <!-- PARTY LIST (recon accounts only) -->
-  <div class="card">
-    <div class="card-title">📋 Account List (${listed.length})</div>
-    <div style="font-size:11px;color:var(--ink-light);margin-bottom:10px">Tap any account to see the full ledger with all transactions</div>
-    ${partyRows||'<div style="text-align:center;padding:20px;color:var(--ink-light)">No accounts yet — add them above or in the Recon Base.</div>'}
-  </div>
-
-  <!-- UNLISTED NAMES FROM DAILY SALES -->
-  ${unlisted.length?`
-  <div class="card" style="border:1px dashed var(--ioc-red)">
-    <div class="card-title">⚠️ Names Not In Your List (${unlisted.length})</div>
-    <div style="font-size:12px;color:var(--ink-light);margin-bottom:10px">These names appeared in Daily Sales after the recon but are not in your account list. Their amounts are <b>not counted in the totals above</b>. Tap <b>➕ Add</b> to make it an account (balance carries over) — or if it's just a wrong spelling of an existing account, add it as an "other spelling" in the Recon Base instead.</div>
-    ${unlisted.sort((a,b)=>(b.credit-b.paid)-(a.credit-a.paid)).map(p=>{
-      const bal=p.credit-p.paid;
-      return`<div class="hist-item">
-        <div style="flex:1">
-          <div class="hist-date" style="font-size:14px">${p.display}</div>
-          <div class="hist-sub"><span style="color:var(--ioc-red)">+ ₹${fmt(p.credit)} credit</span> &nbsp;·&nbsp; <span style="color:var(--green)">− ₹${fmt(p.paid)} deposit</span></div>
-        </div>
-        <div style="text-align:right;flex-shrink:0;margin-right:10px">
-          <div style="font-size:16px;font-weight:700;color:${bal>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(bal)}</div>
-        </div>
-        <button class="btn-secondary" style="font-size:11px;padding:6px 10px;flex-shrink:0" onclick="addUnlistedToRecon('${p.display.replace(/'/g,"\\'")}')">➕ Add</button>
-      </div>`;
-    }).join('')}
-  </div>`:''}
   <div id="creditPartyDetail" style="display:none"></div>`;
 }
 
