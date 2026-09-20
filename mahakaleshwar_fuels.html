@@ -740,12 +740,19 @@ const HSD_DAY0=[380,326,459,519,333,336,379,336];
 const MS_DAY0=[340,299,433,389];
 const HSD_MARGIN=2.5, MS_MARGIN=3.9;
 // ── Running drift base — owner's handwritten register, 14/07/2026 ────────────
-// His register closed its cumulative check at +192 L HSD / −531 L MS. That is the
-// opening balance of the running total; every daily variance dated AFTER 14/07 is
-// added to it. The daily check re-anchors to the physical dip each morning and so
-// forgets yesterday — this carries the small ±10s forward instead of losing them.
-// Verified 15/07/2026: the register's own figures reproduce to the litre.
-const DRIFT_BASE={date:'2026-07-14', hsd:192, ms:-531};
+// RE-ANCHORED 19/09/2026. The running total is the cumulative stock variance carried
+// from the latest physical period-audit reconciliation; every daily dip variance dated
+// AFTER the anchor is added on top. Previously anchored at the 14/07/2026 register
+// (+192 L HSD / −531 L MS), but that was carried by summing daily dips — which missed
+// ~16 un-inspected days, so it drifted (−610/−672) away from a clean full-period recon.
+// The 19/09/2026 audit is one clean reconciliation of the SAME 14/07→19/09 period
+// (opening meters/OM at 14/07 → current dip), so it supersedes the noisy daily sum.
+// Base = DIP − (OM − SALE), derived from the audit, NOT a hard-coded display value:
+//   HSD = 19,892 − (353,599 − 332,429) = −1,278 L
+//   MS  = 10,786 − (170,863 − 159,435) =   −642 L   (SALE 159,435, per the register)
+// Old daily variances (≤19/09) are baked into this anchor, so nothing double-counts;
+// inspections dated after 19/09 accumulate on top exactly as before.
+const DRIFT_BASE={date:'2026-09-19', hsd:-1278, ms:-642};
 
 // ── Variance tolerances (owner-editable, stored in mf_settings) ──────────────
 // Litres. A flat ±5 L on a ~23,000 L tank is ±0.02% — unreachable, so every day
@@ -2247,6 +2254,68 @@ function inspAuto(date,fuel){
   return{pfx,sale,recv,test,prevDate,prevDip,hasRec,saleDays:saleRecs.length};
 }
 
+// Read-only meter breakdown pulled straight from Daily Reckoning for the SAME
+// day(s) the DIP reconciliation covers. This is NOT a second entry system — it
+// only displays the open_/cl_/sale_/Gross/Test/Net fields the Sales module already
+// saved. Because it sums the same records (inRange) and the same *Net field that
+// inspAuto uses, the meter-derived net equals the Inspection net sale by construction.
+function inspMeterCard(date,fuel,expectedNet){
+  const pfx=fuel==='HSD'?'hsd':'ms';
+  const nozzles=fuel==='HSD'?NOZZLES_HSD:NOZZLES_MS;
+  const clr=fuel==='HSD'?'var(--ioc-navy)':'var(--ioc-red)';
+  const bg=fuel==='HSD'?'var(--ioc-navy-light)':'var(--ioc-red-light)';
+  // Mirror inspAuto's range exactly: (last dip date, date]; first-ever → just date.
+  const prevEntry=Object.entries(inspectData)
+    .filter(([d,v])=>d<date&&v&&v[pfx+'Dip']!=null&&v[pfx+'Dip']!=='')
+    .sort((a,b)=>b[0].localeCompare(a[0]))[0];
+  const prevDate=prevEntry?prevEntry[0]:null;
+  const inRange=d=>prevDate?(d>prevDate&&d<=date):(d===date);
+  const recs=cloudData.records.filter(r=>inRange(r.date)).sort((a,b)=>a.date.localeCompare(b.date));
+  const nL=n=>Number(n||0).toLocaleString('en-IN');
+  if(!recs.length){
+    return `<div style="padding:12px 14px;background:${bg};border-radius:var(--r);margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:${clr};text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">📊 Meter Readings — read-only from Daily Reckoning</div>
+      <div style="font-size:12px;color:var(--ink-light)">No Daily Reckoning record in this range — nothing to show. Enter the day's meters in Daily Reckoning; they will appear here automatically.</div>
+    </div>`;
+  }
+  let gross=0,test=0,net=0,dayBlocks='';
+  recs.forEach(r=>{
+    const g=Number(r[pfx+'Gross'])||0,t=Number(r[pfx+'Test'])||0,nt=(r[pfx+'Net']!=null?Number(r[pfx+'Net']):g-t);
+    gross+=g;test+=t;net+=nt;
+    const cells=nozzles.map(n=>{
+      const o=Number(r['open_'+n])||0,c=Number(r['cl_'+n])||0,s=Number(r['sale_'+n])||0;
+      return `<div style="background:#fff;border:1px solid var(--ioc-border);border-radius:6px;padding:6px 8px">
+        <div style="font-size:10px;font-weight:700;color:${clr}">${n}</div>
+        <div style="font-size:10px;color:var(--ink-light)">${nL(o)} → ${nL(c)}</div>
+        <div style="font-size:12px;font-weight:700">${nL(s)} L</div>
+      </div>`;
+    }).join('');
+    dayBlocks+=`
+      <div style="margin-top:8px">
+        ${recs.length>1?`<div style="font-size:11px;font-weight:700;color:var(--ink);margin-bottom:4px">📅 ${r.date}</div>`:''}
+        <div style="display:grid;grid-template-columns:repeat(${fuel==='HSD'?4:2},1fr);gap:6px">${cells}</div>
+        <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;margin-top:6px;padding-top:5px;border-top:1px dashed var(--ioc-border)">
+          <span>Gross <b>${nL(g)} L</b></span>
+          <span>− Testing/adj <b>${nL(t)} L</b></span>
+          <span>= Net <b>${nL(nt)} L</b></span>
+        </div>
+      </div>`;
+  });
+  const rangeTotal=recs.length>1?`
+    <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;margin-top:10px;padding-top:6px;border-top:1px solid ${clr}">
+      <span>Range total · ${recs.length} days</span>
+      <span>Gross ${nL(gross)} − ${nL(test)} = Net ${nL(net)} L</span>
+    </div>`:'';
+  const recon=Math.abs(net-(Number(expectedNet)||0))<0.005;
+  return `<div style="padding:12px 14px;background:${bg};border-radius:var(--r);margin-bottom:14px">
+    <div style="font-size:11px;font-weight:700;color:${clr};text-transform:uppercase;letter-spacing:.05em">📊 Meter Readings — read-only from Daily Reckoning</div>
+    <div style="font-size:10px;color:var(--ink-light);margin-bottom:2px">${fuel==='HSD'?'H1–H8':'M1–M4'} · opening → closing · sale = closing − opening</div>
+    ${dayBlocks}
+    ${rangeTotal}
+    <div style="margin-top:8px;font-size:11px;font-weight:600;color:${recon?'var(--green)':'var(--ioc-red)'}">${recon?'✅':'⚠️'} Meter-derived net ${nL(net)} L ${recon?'=':'≠'} Inspection net sale ${nL(expectedNet)} L</div>
+  </div>`;
+}
+
 function renderInspectionForm(){
   const fuel=inspFuel,a=inspAuto(inspDate,fuel);
   const saved=inspectData[inspDate]||{};
@@ -2265,6 +2334,7 @@ function renderInspectionForm(){
     ${savedDip!=null&&savedDip!==''?`<div class="alert-info" style="margin-bottom:12px">✅ Already saved for ${inspDate} — saving again will update it.</div>`:''}
     ${!a.hasRec?`<div class="alert-warn" style="margin-bottom:12px">⚠️ No Daily Reckoning record for ${inspDate} — net sale counted as 0 for this day. Save the day's sales first for accurate stock.</div>`:''}
     ${a.saleDays>1?`<div class="alert-info" style="margin-bottom:12px">📅 Sales summed across <b>${a.saleDays} days</b> since your last dip on <b>${a.prevDate}</b>.</div>`:''}
+    ${inspMeterCard(inspDate,fuel,a.sale)}
     <div style="padding:12px 14px;background:${bg};border-radius:var(--r);margin-bottom:14px">
       <div style="font-size:11px;font-weight:700;color:${clr};text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">🤖 Auto-loaded from Daily Reckoning</div>
       ${firstTime?'':`<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0"><span>Previous Dip <span style="color:var(--ink-light)">(${a.prevDate})</span></span><b>${fmtL(a.prevDip)}</b></div>`}
@@ -2425,7 +2495,7 @@ function driftCard(){
   return`
   <div class="card">
     <div class="card-title">📉 Running Total — carried from your ${DRIFT_BASE.date} register</div>
-    <div class="alert-info" style="margin-bottom:12px">Opens at your register's closing figures (<b>+192 L HSD</b> / <b>−531 L MS</b>) and adds each day's variance on top. The daily check re-anchors to the dip every morning and forgets yesterday — this doesn't. A slow leak shows up here even when every single day looks fine on its own.</div>
+    <div class="alert-info" style="margin-bottom:12px">Opens at your ${DRIFT_BASE.date} audit reconciliation (<b>${DRIFT_BASE.hsd>=0?'+':''}${DRIFT_BASE.hsd} L HSD</b> / <b>${DRIFT_BASE.ms>=0?'+':''}${DRIFT_BASE.ms} L MS</b>) and adds each day's variance on top. The daily check re-anchors to the dip every morning and forgets yesterday — this doesn't. A slow leak shows up here even when every single day looks fine on its own.</div>
     <div class="grid2">${block('HSD')}${block('MS')}</div>
   </div>`;
 }
