@@ -699,7 +699,7 @@ const STORE_KEY='mf_main',STORE_KEY_CUM='mf_cumulative',STORE_KEY_ATT='mf_attend
       STORE_KEY_INSPECT='mf_inspection',STORE_KEY_RECV='mf_received',STORE_KEY_CREDIT='mf_credit',
       STORE_KEY_STAFF='mf_staff',STORE_KEY_PORTFOLIO='mf_portfolio',STORE_KEY_TESTING='mf_testing',
       DEPOSIT_KEY='mf_owner_deposits',STORE_KEY_TRUCK='mf_trucklog',STORE_KEY_RECON='mf_recon',
-      STORE_KEY_SETTINGS='mf_settings',STORE_KEY_MOBIL='mf_mobil';
+      STORE_KEY_SETTINGS='mf_settings',STORE_KEY_MOBIL='mf_mobil',STORE_KEY_PARTIES='mf_parties';
 // ── MOBIL INVENTORY — opening register ──────────────────────────────────────
 // Physical Stock Register dated 23/09/2026 (page 38). These are the OPENING stock
 // values and never change in code. Every SKU id includes the pack size, so
@@ -870,6 +870,7 @@ let currentUser=null,currentRole=null,selectedRole=null;
 let staffList=[...DEFAULT_STAFF];
 let cloudData={records:[],prevClosing:{},prevBF:0,cumulative:{totalAdv:0,totalExp:0,totalMobil:0,totalDeposit:0,totalCS:0,parties:{},employees:{},expCats:{}}};
 let attData={},inspectData={},recvData=[],creditData=[],testingData=[],portfolioData={months:{}},ownerDeposits=[],truckData=[],reconData=null;
+let partiesData={};                     // mf_parties: {partyId:{name,cat,phone,note}} — THE identity of a credit party
 let mobilData={ledger:{},settings:{}}; // mf_mobil: receipts/adjustments ledger + settings (sales are derived)
 let appSettings=JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
 let draft={},mobilItems=[],depositItems=[],advItems=[],creditSaleItems=[],pumpExpItems=[];
@@ -987,6 +988,13 @@ function sanitizeRecords(){
 
 // mf_mobil = {ledger:{<id>:row}, settings:{lowStock}}. Ledger ids are "mt_<time>_<rand>"
 // (never sequential integers) so RTDB can't coerce the ledger into an array.
+// mf_parties = {<partyId>: {name, cat, phone, note, createdTs, by}}. Ids are
+// "party_<time><rand>" (never sequential integers) so RTDB can't coerce to an array.
+function normalizeParties(raw){
+  const o=(raw&&typeof raw==='object'&&!Array.isArray(raw))?raw:{};
+  const out={};Object.entries(o).forEach(([id,p])=>{if(p&&typeof p==='object'&&p.name)out[id]=p;});
+  return out;
+}
 function normalizeMobil(raw){
   const o=(raw&&typeof raw==='object'&&!Array.isArray(raw))?raw:{};
   return {
@@ -1012,6 +1020,7 @@ async function loadCloud(){
     const depO=await cloudGet(DEPOSIT_KEY);if(depO)ownerDeposits=depO;
     const trk=await cloudGet(STORE_KEY_TRUCK);if(trk)truckData=trk;
     const mob=await cloudGet(STORE_KEY_MOBIL);mobilData=normalizeMobil(mob);
+    const pty=await cloudGet(STORE_KEY_PARTIES);partiesData=normalizeParties(pty);
     const vAl=await cloudGet('mf_vehicle_aliases'),vPh=await cloudGet('mf_vehicle_phones'),vCa=await cloudGet('mf_vehicle_calls');
     if(window.VR&&VR.hydrate)VR.hydrate(vAl,vPh,vCa);
     const rcn=await cloudGet(STORE_KEY_RECON);if(rcn){reconData=rcn;_creditAliasMap=null;}
@@ -1036,6 +1045,7 @@ async function loadCloud(){
       const depO=JSON.parse(localStorage.getItem(DEPOSIT_KEY)||'null');if(depO)ownerDeposits=depO;
       const trk=JSON.parse(localStorage.getItem(STORE_KEY_TRUCK)||'null');if(trk)truckData=trk;
       const mob=JSON.parse(localStorage.getItem(STORE_KEY_MOBIL)||'null');mobilData=normalizeMobil(mob);
+      const pty=JSON.parse(localStorage.getItem(STORE_KEY_PARTIES)||'null');partiesData=normalizeParties(pty);
       const rcn=JSON.parse(localStorage.getItem(STORE_KEY_RECON)||'null');if(rcn){reconData=rcn;_creditAliasMap=null;}
       syncStatus('err','⚠️ Offline — using cached data. Tap to retry.');
     }catch(e2){
@@ -1501,7 +1511,7 @@ function renderExtras(){
   document.getElementById('stepContent').innerHTML=`
     <div class="card"><div class="card-title">🔁 Balance Forward</div><div class="alert-info">Prev Final Cash = <b>₹${fmt(bf)}</b></div><div class="field"><div class="lbl">BF (₹)</div><input type="number" id="bfAmt" value="${draft.bf!==undefined?draft.bf:bf}" step="0.01"></div></div>
     ${mobilSalesCard()}
-    <div class="card"><div class="card-title"><span class="tag tag-dep">DEPOSIT</span> Deposit</div><div class="grid2" style="margin-bottom:8px"><div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="depAmt" step="0.01"></div><div class="field"><div class="lbl">Party</div><input type="text" id="depName" placeholder="Party name"></div></div><button class="btn-secondary" style="margin-bottom:8px" onclick="addDeposit()">+ Add</button><div id="depositList"></div></div>
+    <div class="card"><div class="card-title"><span class="tag tag-dep">DEPOSIT</span> Deposit</div><div class="grid2" style="margin-bottom:8px"><div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="depAmt" step="0.01"></div>${partyPickerHtml('dep','Party',true)}</div>${partyNewBoxHtml('dep')}<button class="btn-secondary" style="margin-bottom:8px" onclick="addDeposit()">+ Add</button><div id="depositList"></div></div>
     <div class="btn-row"><button class="btn-primary" onclick="saveExtras()">Next →</button></div>`;
   renderMobilList();renderDepositList();mobSkuChange();
 }
@@ -1579,10 +1589,10 @@ function mobilDraftOk(){
   for(const id in need){if(need[id]>st[id].current){alert(`Insufficient stock for ${mobilLabel(mobilSku(id))}. Current balance: ${Math.max(st[id].current,0)}`);return false;}}
   return true;
 }
-function addDeposit(){const a=gv('depAmt'),n=gs('depName');if(!a||!n){alert('Enter amount and party');return;}depositItems.push({amt:a,name:n});document.getElementById('depAmt').value='';document.getElementById('depName').value='';renderDepositList();}
+async function addDeposit(){const a=gv('depAmt');if(!(a>0)){alert('Enter the deposit amount');return;}const r=await partyPickerResolve('dep');if(!r)return;depositItems.push({amt:a,name:r.name,partyId:r.partyId});document.getElementById('depAmt').value='';partyPickerReset('dep');renderDepositList();}
 function removeDeposit(i){depositItems.splice(i,1);renderDepositList();}
-function renderDepositList(){const el=document.getElementById('depositList');if(!el)return;el.innerHTML=depositItems.map((c,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">${c.name}</div></div><span class="list-item-amount">₹${fmt(c.amt)}</span><button class="rm-btn" onclick="removeDeposit(${i})">✕</button></div>`).join('');}
-function saveExtras(){if(!mobilDraftOk())return;draft.bf=gv('bfAmt');draft.mobilItems=[...mobilItems];draft.depositItems=[...depositItems];draft.mobilTotal=mobilItems.reduce((a,m)=>a+m.amt,0);draft.depositTotal=depositItems.reduce((a,c)=>a+c.amt,0);nextStep();}
+function renderDepositList(){const el=document.getElementById('depositList');if(!el)return;el.innerHTML=depositItems.map((c,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">${partyLineSelect('dep',i,c.partyId,c.name)}</div></div><span class="list-item-amount">₹${fmt(c.amt)}</span><button class="rm-btn" onclick="removeDeposit(${i})">✕</button></div>`).join('');}
+function saveExtras(){if(!mobilDraftOk()||!partyLinesOk('dep'))return;draft.bf=gv('bfAmt');draft.mobilItems=[...mobilItems];draft.depositItems=[...depositItems];draft.mobilTotal=mobilItems.reduce((a,m)=>a+m.amt,0);draft.depositTotal=depositItems.reduce((a,c)=>a+c.amt,0);nextStep();}
 function renderPaytm(){
   const nf=NOZZLES_MS.map(n=>`<div class="paytm-nozzle"><div style="font-size:12px;font-weight:600;margin-bottom:6px"><span class="tag tag-ms">${n}</span></div><div class="pn-grid"><div class="field"><div class="lbl">Timing</div><input type="text" id="pt_t_${n}" placeholder="09:00-18:00" value="${draft['pt_t_'+n]||''}"></div><div class="field"><div class="lbl">Card (₹)</div><input type="number" id="pt_c_${n}" placeholder="0" value="${draft['pt_c_'+n]||0}" step="0.01"></div></div></div>`).join('');
   document.getElementById('stepContent').innerHTML=`<div class="card"><div class="card-title">📱 Paytm Total</div><div class="field"><div class="lbl">Total Paytm (₹)</div><input type="number" id="paytmTotal" value="${draft.paytmTotal||0}" step="0.01"></div></div><div class="card"><div class="card-title">💳 Card by Nozzle (MS)</div>${nf}</div><div class="btn-row"><button class="btn-primary" onclick="savePaytm()">Next →</button></div>`;
@@ -1595,11 +1605,9 @@ function renderExpenses(){
     <div class="card"><div class="card-title">💳 Credit Sales <span style="font-size:11px;color:var(--ioc-red);font-weight:400">(subtracted from final cash)</span></div>
       <div class="grid2" style="margin-bottom:8px">
         <div class="field"><div class="lbl">Amount (₹)</div><input type="number" id="csAmt" step="0.01" placeholder="0"></div>
-        <div class="field"><div class="lbl">Party Name</div>
-          <input type="text" id="csName" placeholder="Party name" list="csPartyList">
-          <datalist id="csPartyList">${[...new Set(creditData.map(t=>t.party))].map(p=>`<option value="${p}">`).join('')}</datalist>
-        </div>
+        ${partyPickerHtml('cs','Party',true)}
       </div>
+      ${partyNewBoxHtml('cs')}
       <button class="btn-secondary" style="margin-bottom:8px" onclick="addCS()">+ Add</button>
       <div id="csList"></div>
     </div>
@@ -1612,13 +1620,14 @@ function renderExpenses(){
 function addAdv(){const a=gv('advAmt'),n=gs('advName');if(!a||!n)return;advItems.push({amt:a,name:n});document.getElementById('advAmt').value='';document.getElementById('advName').value='';renderAdvList();}
 function removeAdv(i){advItems.splice(i,1);renderAdvList();}
 function renderAdvList(){const el=document.getElementById('advList');if(!el)return;el.innerHTML=advItems.map((x,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">₹${fmt(x.amt)} — ${x.name}</div></div><span class="list-item-amount">₹${fmt(x.amt)}</span><button class="rm-btn" onclick="removeAdv(${i})">✕</button></div>`).join('');}
-function addCS(){const a=gv('csAmt'),n=gs('csName');if(!a||!n)return;creditSaleItems.push({amt:a,name:n});document.getElementById('csAmt').value='';document.getElementById('csName').value='';renderCSList();}
+async function addCS(){const a=gv('csAmt');if(!(a>0)){alert('Enter the credit amount');return;}const r=await partyPickerResolve('cs');if(!r)return;creditSaleItems.push({amt:a,name:r.name,partyId:r.partyId});document.getElementById('csAmt').value='';partyPickerReset('cs');renderCSList();}
 function removeCS(i){creditSaleItems.splice(i,1);renderCSList();}
-function renderCSList(){const el=document.getElementById('csList');if(!el)return;el.innerHTML=creditSaleItems.map((x,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">₹${fmt(x.amt)} — ${x.name}</div></div><span class="list-item-amount">₹${fmt(x.amt)}</span><button class="rm-btn" onclick="removeCS(${i})">✕</button></div>`).join('');}
+function renderCSList(){const el=document.getElementById('csList');if(!el)return;el.innerHTML=creditSaleItems.map((x,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">₹${fmt(x.amt)} — ${partyLineSelect('cs',i,x.partyId,x.name)}</div></div><span class="list-item-amount">₹${fmt(x.amt)}</span><button class="rm-btn" onclick="removeCS(${i})">✕</button></div>`).join('');}
 function addExp(){const a=gv('expAmt'),n=gs('expName');if(!a||!n)return;pumpExpItems.push({amt:a,name:n});document.getElementById('expAmt').value='';document.getElementById('expName').value='';renderExpList();}
 function removeExpItem(i){pumpExpItems.splice(i,1);renderExpList();}
 function renderExpList(){const el=document.getElementById('expList');if(!el)return;el.innerHTML=pumpExpItems.map((x,i)=>`<div class="list-item"><div class="list-item-body"><div class="list-item-title">₹${fmt(x.amt)} — ${x.name}</div></div><span class="list-item-amount">₹${fmt(x.amt)}</span><button class="rm-btn" onclick="removeExpItem(${i})">✕</button></div>`).join('');}
 function saveExpenses(){
+  if(!partyLinesOk('cs'))return;
   draft.otp=gv('otp');draft.tanker=gv('tanker');draft.tankerName=gs('tankerName');draft.acctTr=gv('acctTr');draft.hoBank=gv('hoBank');
   draft.otherExp=gv('otherExp');draft.otherExpName=gs('otherExpName');
   draft.advItems=[...advItems];draft.creditSaleItems=[...creditSaleItems];draft.pumpExpItems=[...pumpExpItems];
@@ -1751,6 +1760,7 @@ function renderReport(){
   <div id="saveMsg" style="font-size:13px;color:var(--green);margin-top:8px;min-height:18px"></div>`;
 }
 async function confirmSave(){
+  if(!partyLinesOk('all'))return;
   if(!confirm('Save and sync to all devices?'))return;
   const btn=document.getElementById('saveBtn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Saving…';
   const d=draft,c=cloudData.cumulative;
@@ -1773,6 +1783,7 @@ async function confirmSave(){
     if(x.name&&x.amt>0){
       creditData.push({
         party:x.name,
+        partyId:x.partyId||'',
         type:'credit',
         amt:x.amt,
         date:d.date,
@@ -2770,77 +2781,250 @@ async function saveTruckEdit(){
 }
 
 // ── MODULE 6: CREDIT SALES ────────────────────────────────────────────────────
-// Canonical credit-party computation — ANCHORED to the owner's recon (CREDIT_BASE).
-//  • Every account starts at its recon amount (shown as the Opening Balance line).
-//  • Only transactions dated on/after CREDIT_BASE_DATE move a balance:
-//      credit (daily sales) adds · deposit from the same party subtracts ·
-//      manual payment subtracts.  balance = base + credit − deposit
-//  • Records BEFORE the recon date are already inside the base amounts, so they
-//    are skipped — counting them again would double up.
-// Name variants ("KISHAN CHAUHAN MANOJ RODE LINES", "Kishan (manoj road lines)"…)
-// fold onto one account via creditAlias()/CREDIT_BASE alias table.
-function computeCreditParties(){
-  const parties={};
-  const R=activeRecon();
-  const keyOf=n=>creditAlias(creditKeyOf(n));
-  function getParty(name){
-    const k=keyOf(name);
-    if(!parties[k])parties[k]={display:(name||'').trim()||'(unnamed)',credit:0,paid:0,base:0,cat:'',listed:false,txns:[]};
-    return parties[k];
+// ══════════════════════════════════════════════════════════════════════════════
+// CREDIT PARTIES — identity is the partyId, NEVER the name (24/09/2026).
+// A party is a record in mf_parties/{partyId}. The name is display/search only:
+// two parties may share a name and stay completely separate. Every opening
+// balance, Daily Sales credit line, deposit line and recorded payment carries the
+// partyId it belongs to, and balances are summed by partyId only.
+// A line with no valid partyId (e.g. saved by a phone still on an old cached copy)
+// is never guessed onto a party by name — it is listed under "Needs a party".
+// ══════════════════════════════════════════════════════════════════════════════
+function partyNewId(){return 'party_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function partyById(id){const p=id&&partiesData&&partiesData[id];return p&&typeof p==='object'&&p.name?p:null;}
+function partyAll(){return Object.entries(partiesData||{}).filter(([,p])=>p&&typeof p==='object'&&p.name).map(([id,p])=>({...p,id}));}
+function partyCache(){try{localStorage.setItem(STORE_KEY_PARTIES,JSON.stringify(partiesData));}catch(e){}}
+// Small identifying detail so same-named parties can be told apart on screen.
+function partyDetail(p,id){
+  if(!p)return'';
+  const pid=p.id||id;   // stored rows don't carry their own id (it is the Firebase key)
+  const bits=[];
+  if(p.phone){const d=String(p.phone).replace(/\D/g,'');bits.push('📞 '+(d.length>4?'XXXXXX'+d.slice(-4):p.phone));}
+  if(p.note)bits.push(p.note);
+  const k=creditKeyOf(p.name);
+  if(pid&&partyAll().some(q=>q.id!==pid&&creditKeyOf(q.name)===k))bits.push('ID …'+String(pid).slice(-4));
+  return bits.join(' · ');
+}
+function partyOptionLabel(p){const d=partyDetail(p);return p.name+(d?' · '+d:'');}
+async function partyCreate(fields){
+  const id=partyNewId();
+  const row={name:String(fields.name||'').trim(),cat:fields.cat||'OUTSTANDING',phone:String(fields.phone||'').trim(),note:String(fields.note||'').trim(),createdTs:new Date().toISOString(),by:currentRole||''};
+  partiesData[id]=row;
+  const ok=await cloudPatch(STORE_KEY_PARTIES,{[id]:row});
+  if(!ok){delete partiesData[id];alert('⚠️ Party not saved — Firebase could not be reached. Try again.');return null;}
+  partyCache();return id;
+}
+async function partyUpdate(id,fields){
+  const p=partyById(id);if(!p)return false;
+  const prev={...p};
+  const upd={...fields,editedTs:new Date().toISOString(),editedBy:currentRole||''};
+  Object.assign(p,upd);
+  const ok=await cloudPatch(`${STORE_KEY_PARTIES}/${id}`,upd);
+  if(!ok){partiesData[id]=prev;alert('⚠️ Not saved — Firebase could not be reached.');return false;}
+  partyCache();return true;
+}
+
+// ── Party picker (Daily Sales credit/deposit, Record Payment) ────────────────
+const PARTY_NEW='__new__';
+function partyOptionsHtml(sel,filter,allowNew){
+  const q=creditKeyOf(filter||'');
+  const list=partyAll()
+    .filter(p=>!q||creditKeyOf([p.name,p.phone,p.note].join(' ')).includes(q))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+  return `<option value="">— Select party —</option>`+
+    list.map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>${offEsc(partyOptionLabel(p))}</option>`).join('')+
+    (allowNew?`<option value="${PARTY_NEW}">➕ New party…</option>`:'');
+}
+function partyPickerHtml(px,label,allowNew){
+  return `<div class="field"><div class="lbl">${label||'Party'}</div>
+    <input type="text" id="${px}_q" placeholder="🔍 Search party…" oninput="partyPickerFilter('${px}',${allowNew?1:0})" style="margin-bottom:6px">
+    <select id="${px}_sel" onchange="partyPickerChange('${px}')" style="${MOBIL_SELECT_CSS}">${partyOptionsHtml('','',allowNew)}</select></div>`;
+}
+function partyNewBoxHtml(px){
+  return `<div id="${px}_new" style="display:none;padding:10px;border:1px dashed var(--ioc-border);border-radius:var(--r);margin-bottom:8px">
+    <div class="grid2"><div class="field"><div class="lbl">New party name</div><input type="text" id="${px}_nname" placeholder="Full name / firm" oninput="partyPickerDupWarn('${px}')"></div>
+    <div class="field"><div class="lbl">Phone (optional — tells same names apart)</div><input type="tel" id="${px}_nphone" placeholder="10-digit"></div></div>
+    <div class="field"><div class="lbl">Note (optional — village, vehicle, firm)</div><input type="text" id="${px}_nnote" placeholder="e.g. Bojhawapar"></div>
+    <div id="${px}_warn" style="font-size:11px;color:#B87A10;min-height:14px"></div>
+  </div>`;
+}
+function partyPickerFilter(px,allowNew){
+  const q=document.getElementById(px+'_q'),s=document.getElementById(px+'_sel');if(!s)return;
+  s.innerHTML=partyOptionsHtml(s.value,q?q.value:'',!!allowNew);
+  if(q&&q.value){const real=[...s.options].filter(o=>o.value&&o.value!==PARTY_NEW);if(real.length===1)s.value=real[0].value;}
+  partyPickerChange(px);
+}
+function partyPickerChange(px){
+  const s=document.getElementById(px+'_sel'),w=document.getElementById(px+'_new');
+  const isNew=!!s&&s.value===PARTY_NEW;
+  if(w)w.style.display=isNew?'':'none';
+  if(isNew){const q=document.getElementById(px+'_q'),n=document.getElementById(px+'_nname');if(n&&!n.value&&q&&q.value)n.value=q.value;partyPickerDupWarn(px);}
+}
+function partyPickerDupWarn(px){
+  const n=document.getElementById(px+'_nname'),w=document.getElementById(px+'_warn');if(!n||!w)return;
+  const k=creditKeyOf(n.value),same=k?partyAll().filter(p=>creditKeyOf(p.name)===k):[];
+  w.textContent=same.length?`⚠️ A party named "${same[0].name}" already exists${same.length>1?' ('+same.length+' of them)':''}. Please verify that this is a different customer — a separate account will be created.`:'';
+}
+// Resolve the picker to {partyId,name}. "New party" is created here — always a fresh id.
+async function partyPickerResolve(px){
+  const s=document.getElementById(px+'_sel'),v=s?s.value:'';
+  if(!v){alert('Select the party (or choose ➕ New party)');return null;}
+  if(v===PARTY_NEW){
+    const name=gs(px+'_nname');if(!name){alert('Enter the new party name');return null;}
+    const id=await partyCreate({name,phone:gs(px+'_nphone'),note:gs(px+'_nnote')});
+    return id?{partyId:id,name}:null;
   }
-  // 1) Opening balances from the active recon — these are the LISTED accounts;
-  // any other name found in daily sales stays unlisted until added to the recon
+  const p=partyById(v);if(!p){alert('That party no longer exists — pick again');return null;}
+  return{partyId:v,name:p.name};
+}
+function partyPickerReset(px){
+  ['_q','_nname','_nphone','_nnote'].forEach(k=>{const el=document.getElementById(px+k);if(el)el.value='';});
+  const s=document.getElementById(px+'_sel');if(s)s.innerHTML=partyOptionsHtml('','',!!document.getElementById(px+'_new'));
+  partyPickerChange(px);const w=document.getElementById(px+'_warn');if(w)w.textContent='';
+}
+// Party selector on an already-listed credit/deposit line: changing it moves THAT
+// line to the chosen party (a correction of the line, never a merge of parties).
+function partyLineSelect(kind,i,pid,snap){
+  const ok=!!partyById(pid);
+  const opts=partyAll().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${p.id}" ${p.id===pid?'selected':''}>${offEsc(partyOptionLabel(p))}</option>`).join('');
+  return `<select onchange="partyReassign('${kind}',${i},this.value)" title="Party for this line" style="padding:4px 6px;font-size:12px;border:1px solid ${ok?'var(--ioc-border)':'var(--ioc-red)'};border-radius:6px;max-width:100%;background:#fff;color:var(--ink)">${ok?'':`<option value="" selected>⚠️ Pick party${snap?' (typed: '+offEsc(snap)+')':''}</option>`}${opts}</select>`;
+}
+function partyReassign(kind,i,pid){
+  const arr=kind==='cs'?creditSaleItems:depositItems,p=partyById(pid);
+  if(!arr[i]||!p)return;
+  arr[i]={...arr[i],partyId:pid,name:p.name};   // copy — never mutate the saved record in memory
+  if(kind==='cs')renderCSList();else renderDepositList();
+}
+// A day inside the ledger window may not be saved with a line that has no party.
+function partyLinesOk(kind){
+  const R=activeRecon();if(!salesDate||salesDate<R.date)return true;   // older days sit outside the ledger
+  const lines=[];
+  if(kind!=='dep')creditSaleItems.forEach(x=>lines.push(['Credit sale',x]));
+  if(kind!=='cs')depositItems.forEach(x=>lines.push(['Deposit',x]));
+  const bad=lines.filter(([,x])=>x&&x.amt>0&&!partyById(x.partyId));
+  if(!bad.length)return true;
+  alert(`Pick the party for ${bad.length} line(s) first:\n`+bad.map(([k,x])=>`• ${k} ₹${fmt(x.amt)}${x.name?' (typed "'+x.name+'")':''}`).join('\n'));
+  return false;
+}
+
+// Canonical credit-party computation — ANCHORED to the recon, KEYED BY partyId.
+//  balance = opening (recon, by partyId) + credit lines − deposit lines − payments
+//  Only entries dated on/after the recon date move a balance. Daily Sales copies
+//  in mf_credit are skipped when the day's record exists (the record is the truth).
+function computeCreditParties(){
+  const parties={},unassigned=[];
+  const R=activeRecon();
+  const get=id=>{
+    if(!parties[id]){const P=partyById(id)||{};parties[id]={id,display:P.name||'(missing party)',phone:P.phone||'',note:P.note||'',credit:0,paid:0,base:0,cat:P.cat||'',listed:true,txns:[]};}
+    return parties[id];
+  };
+  partyAll().forEach(p=>get(p.id));              // every party shows, even at ₹0 — none is ever dropped
   R.accounts.forEach(b=>{
-    const p=getParty(b.name);
-    p.display=b.name;p.base=b.amt;p.cat=b.cat||'';p.listed=true;
-    p.credit+=b.amt;
-    p.txns.push({date:R.date,type:'credit',amt:b.amt,note:'Opening Balance — Recon '+R.date+(b.cat?' ('+b.cat+')':''),auto:true,base:true});
+    const a=+b.amt||0;
+    if(!partyById(b.partyId)){if(a)unassigned.push({date:R.date,type:'credit',amt:a,name:b.name,src:'Opening balance'});return;}
+    const p=get(b.partyId);
+    p.base+=a;p.credit+=a;if(!p.cat)p.cat=b.cat||'';
+    p.txns.push({date:R.date,type:'credit',amt:a,note:'Opening Balance — Recon '+R.date+(b.cat?' ('+b.cat+')':''),auto:true,base:true});
   });
-  // 2) Daily-sales credits & deposits, recon date onward only
+  const recDates=new Set();
   cloudData.records.forEach(r=>{
-    if((r.date||'')<R.date)return;
-    (r.creditSaleItems||[]).forEach(item=>{
-      const p=getParty(item.name);
-      p.credit+=item.amt;
-      p.txns.push({date:r.date,type:'credit',amt:item.amt,note:'Daily Sales',auto:true});
+    if(!r||(r.date||'')<R.date)return;
+    recDates.add(r.date);
+    (r.creditSaleItems||[]).forEach(x=>{
+      if(!x||!(x.amt>0))return;
+      if(!partyById(x.partyId)){unassigned.push({date:r.date,type:'credit',amt:x.amt,name:x.name,src:'Daily Sales credit'});return;}
+      const p=get(x.partyId);p.credit+=x.amt;
+      p.txns.push({date:r.date,type:'credit',amt:x.amt,note:'Daily Sales'+(x.name&&x.name!==p.display?' — "'+x.name+'"':''),auto:true});
     });
-    if((r.csTotal||0)>0&&!(r.creditSaleItems||[]).length){
-      const p=getParty('Credit Sale');
-      p.credit+=r.csTotal;
-      p.txns.push({date:r.date,type:'credit',amt:r.csTotal,note:'Daily Sales',auto:true});
-    }
-    // Deposit from a credit party = that party paying back → PAYMENT
-    (r.depositItems||[]).forEach(dep=>{
-      if(dep&&dep.name&&dep.amt>0){
-        const p=getParty(dep.name);
-        p.paid+=dep.amt;
-        p.txns.push({date:r.date,type:'payment',amt:dep.amt,note:'Deposit (Daily Sales)',auto:true});
-      }
+    if((r.csTotal||0)>0&&!(r.creditSaleItems||[]).length)unassigned.push({date:r.date,type:'credit',amt:r.csTotal,name:'(credit with no party line)',src:'Daily Sales credit'});
+    (r.depositItems||[]).forEach(x=>{
+      if(!x||!(x.amt>0))return;
+      if(!partyById(x.partyId)){unassigned.push({date:r.date,type:'payment',amt:x.amt,name:x.name,src:'Daily Sales deposit'});return;}
+      const p=get(x.partyId);p.paid+=x.amt;
+      p.txns.push({date:r.date,type:'payment',amt:x.amt,note:'Deposit (Daily Sales)'+(x.name&&x.name!==p.display?' — "'+x.name+'"':''),auto:true});
     });
   });
-  // 3) Manual entries, recon date onward only
   creditData.forEach(t=>{
-    if((t.date||'')<R.date)return;
-    // Skip auto deposit-payments that were synced separately — deposits are now
-    // read straight from records above, so counting these too would double up.
-    if(t.source==='daily_deposit')return;
-    if(t.type==='payment'){
-      const p=getParty(t.party);
-      p.paid+=t.amt;
-      p.txns.push({date:t.date,type:'payment',amt:t.amt,note:t.note||'',auto:false});
-    }
-    if(t.type==='credit'&&!cloudData.records.some(r=>(r.creditSaleItems||[]).some(ci=>keyOf(ci.name)===keyOf(t.party)&&ci.amt===t.amt&&r.date===t.date))){
-      const p=getParty(t.party);
-      p.credit+=t.amt;
-      p.txns.push({date:t.date,type:'credit',amt:t.amt,note:t.note||'Manual',auto:false});
-    }
+    if(!t||(t.date||'')<R.date)return;
+    if((t.source==='daily_sales'||t.source==='daily_deposit')&&recDates.has(t.date))return;
+    if(t.type!=='payment'&&t.type!=='credit')return;
+    if(!partyById(t.partyId)){unassigned.push({date:t.date,type:t.type,amt:t.amt,name:t.party,src:t.type==='payment'?'Recorded payment':'Manual credit'});return;}
+    const p=get(t.partyId);
+    if(t.type==='payment')p.paid+=t.amt;else p.credit+=t.amt;
+    p.txns.push({date:t.date,type:t.type,amt:t.amt,note:t.note||(t.type==='payment'?'Payment':'Manual'),auto:false});
   });
-  // DATA-DRIVEN: any party seen in daily sales/manual after the recon that isn't a
-  // recon account is auto-promoted to a first-class OUTSTANDING account — no manual
-  // "Add Person" step. Deposits under that name reduce it automatically.
-  Object.values(parties).forEach(p=>{ if(!p.listed){ p.listed=true; if(!p.cat)p.cat='OUTSTANDING'; } });
+  Object.values(parties).forEach(p=>{if(!p.cat)p.cat='OUTSTANDING';});
+  Object.defineProperty(parties,'_unassigned',{value:unassigned,enumerable:false});
   return parties;
 }
+
+// ── Credit screen pieces ──────────────────────────────────────────────────────
+let creditSearchQ='';
+function creditPartyRowsHtml(listed,q){
+  const k=creditKeyOf(q||''),raw=String(q||'').trim().toLowerCase();
+  const match=p=>!k||creditKeyOf([p.display,p.phone,p.note].join(' ')).includes(k)||(raw.length>=3&&String(p.id).toLowerCase().endsWith(raw));
+  const CAT_ORDER=['OUTSTANDING','SUNDRY','BAD DEBTERS','STUCK ACCOUNT',''];
+  const CAT_LABEL={'OUTSTANDING':'🟢 Active Accounts','SUNDRY':'🟡 Sundry','BAD DEBTERS':'🔴 Bad Debtors','STUCK ACCOUNT':'🟠 Stuck Accounts','':'📁 Uncategorised'};
+  return CAT_ORDER.map(cat=>{
+    const rows=listed.filter(p=>(p.cat||'')===cat&&match(p)).sort((a,b)=>(b.credit-b.paid)-(a.credit-a.paid));
+    if(!rows.length)return'';
+    const sub=rows.reduce((a,p)=>a+(p.credit-p.paid),0);
+    const items=rows.map(p=>{
+      const bal=p.credit-p.paid,since=p.credit-(p.base||0),det=partyDetail(partyById(p.id),p.id);
+      const st=bal>0.5?['⚠️ Due','var(--ioc-red)']:bal<-0.5?['↩ Overpaid','#B87A10']:['✅ Clear','var(--green)'];
+      return`<div onclick="showCreditParty('${p.id}')" class="hist-item" style="cursor:pointer" data-party="${p.id}">
+        <div style="flex:1">
+          <div class="hist-date" style="font-size:14px">${offEsc(p.display)}</div>
+          ${det?`<div style="font-size:11px;color:var(--ioc-navy);margin:1px 0 2px">${offEsc(det)}</div>`:''}
+          <div class="hist-sub">
+            Base: ₹${fmt(p.base||0)} &nbsp;·&nbsp; <span style="color:var(--ioc-red)">+ ₹${fmt(since)} credit</span> &nbsp;·&nbsp; <span style="color:var(--green)">− ₹${fmt(p.paid)} deposit</span>
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:11px;font-weight:600;color:${st[1]}">${st[0]}</div>
+          <div style="font-size:16px;font-weight:700;color:${st[1]}" class="party-bal">${bal<-0.5?'−':''}₹${fmt(Math.abs(bal))}</div>
+        </div>
+      </div>`;
+    }).join('');
+    return`<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 4px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--ink-light)">${CAT_LABEL[cat]} (${rows.length})</div>
+      <div style="font-size:12px;font-weight:700;color:${sub>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(sub)}</div>
+    </div>${items}`;
+  }).join('');
+}
+function creditSearch(q){
+  creditSearchQ=q||'';
+  const el=document.getElementById('creditList');if(!el)return;
+  el.innerHTML=creditPartyRowsHtml(Object.values(computeCreditParties()).filter(p=>p.listed),creditSearchQ)||'<div style="text-align:center;padding:16px;color:var(--ink-light)">No party matches.</div>';
+}
+function creditUnassignedHtml(un){
+  if(!un||!un.length)return'';
+  return `<div class="card" style="border:1px dashed var(--ioc-red)"><div class="card-title">⚠️ Needs a party (${un.length})</div>
+    <div style="font-size:12px;color:var(--ink-light);margin-bottom:10px">These entries have no party attached (e.g. saved from a phone still running an older version). They are counted in the total but in no account, and are never matched by name. Open the day and pick the party for each line.</div>
+    ${un.map(u=>`<div class="hist-item" style="cursor:default"><div style="flex:1"><div class="hist-date" style="font-size:13px">${offEsc(u.name||'(no name)')}</div><div class="hist-sub">${u.date} · ${u.src}</div></div><div style="text-align:right;margin-right:10px;font-weight:700;color:${u.type==='payment'?'var(--green)':'var(--ioc-red)'}">${u.type==='payment'?'−':'+'}₹${fmt(u.amt)}</div>${/Daily Sales/.test(u.src)?`<button class="btn-secondary" style="font-size:11px;padding:6px 10px" onclick="openModule('sales');editSavedRecord('${u.date}')">Fix →</button>`:''}</div>`).join('')}
+  </div>`;
+}
+function partyEditForm(id){
+  const p=partyById(id),box=document.getElementById('partyEditBox');if(!p||!box)return;
+  box.innerHTML=`<div class="card" style="margin-top:10px"><div class="card-title">✏️ Edit party details</div>
+    <div style="font-size:11px;color:var(--ink-light);margin-bottom:8px">Changes apply to THIS account only (ID …${String(id).slice(-4)}). Other parties with the same or a similar name are not touched. Past entries keep the name they were saved with.</div>
+    <div class="grid2"><div class="field"><div class="lbl">Name</div><input type="text" id="pe_name" value="${offEsc(p.name)}" oninput="partyEditDup('${id}')"></div>
+    <div class="field"><div class="lbl">Phone</div><input type="tel" id="pe_phone" value="${offEsc(p.phone||'')}"></div></div>
+    <div class="field"><div class="lbl">Note (village, vehicle, firm…)</div><input type="text" id="pe_note" value="${offEsc(p.note||'')}"></div>
+    <div id="pe_warn" style="font-size:11px;color:#B87A10;min-height:14px;margin-bottom:6px"></div>
+    <div class="btn-row"><button class="btn-primary" onclick="partyEditSave('${id}')">💾 Save</button><button class="btn-secondary" onclick="document.getElementById('partyEditBox').innerHTML=''">Cancel</button></div></div>`;
+}
+function partyEditDup(id){
+  const n=document.getElementById('pe_name'),w=document.getElementById('pe_warn');if(!n||!w)return;
+  const k=creditKeyOf(n.value),same=k?partyAll().filter(p=>p.id!==id&&creditKeyOf(p.name)===k):[];
+  w.textContent=same.length?`⚠️ Another party is also named "${same[0].name}". That is allowed — the two stay separate accounts.`:'';
+}
+async function partyEditSave(id){
+  const name=gs('pe_name');if(!name){alert('Name cannot be empty');return;}
+  if(!await partyUpdate(id,{name,phone:gs('pe_phone'),note:gs('pe_note')}))return;
+  renderCreditSales();showCreditParty(id);
+}
+
 
 function renderCreditSales(){
   document.getElementById('stepBar').innerHTML=`<button class="btn-secondary" onclick="backToModules()" style="margin-bottom:12px;padding:6px 12px;font-size:11px">← Back</button>`;
@@ -2856,41 +3040,15 @@ function renderCreditSales(){
   const R=activeRecon();
   // No Math.max(0,…) here — an overpaid account is real money and must pull the
   // total DOWN. Clamping it to zero silently hid a ₹3,000 overpayment (audit 03 Aug 2026).
-  const totalDue=listed.reduce((a,p)=>a+(p.credit-p.paid),0);
+  const un=parties._unassigned||[];
+  const totalDue=listed.reduce((a,p)=>a+(p.credit-p.paid),0)+un.reduce((a,u)=>a+(u.type==='payment'?-u.amt:u.amt),0);
   const newCredit=listed.reduce((a,p)=>a+(p.credit-(p.base||0)),0);
   const totalPaid=listed.reduce((a,p)=>a+p.paid,0);
   const totalBase=R.accounts.reduce((a,b)=>a+(+b.amt||0),0);
   const catTotal=c=>listed.filter(p=>(p.cat||'')===c).reduce((a,p)=>a+(p.credit-p.paid),0);
   const outT=catTotal('OUTSTANDING'),sunT=catTotal('SUNDRY'),stuT=catTotal('STUCK ACCOUNT');
 
-  const CAT_ORDER=['OUTSTANDING','SUNDRY','BAD DEBTERS','STUCK ACCOUNT',''];
-  const CAT_LABEL={'OUTSTANDING':'🟢 Active Accounts','SUNDRY':'🟡 Sundry','BAD DEBTERS':'🔴 Bad Debtors','STUCK ACCOUNT':'🟠 Stuck Accounts','':'📁 Uncategorised'};
-  const partyRows=CAT_ORDER.map(cat=>{
-    const rows=listed.filter(p=>(p.cat||'')===cat).sort((a,b)=>(b.credit-b.paid)-(a.credit-a.paid));
-    if(!rows.length)return'';
-    const sub=rows.reduce((a,p)=>a+(p.credit-p.paid),0);
-    const items=rows.map(p=>{
-      const bal=p.credit-p.paid;
-      const dn=p.display;
-      const since=p.credit-(p.base||0);
-      return`<div onclick="showCreditParty('${dn.replace(/'/g,"\\'")}')" class="hist-item" style="cursor:pointer">
-        <div style="flex:1">
-          <div class="hist-date" style="font-size:14px">${dn}</div>
-          <div class="hist-sub">
-            Base: ₹${fmt(p.base||0)} &nbsp;·&nbsp; <span style="color:var(--ioc-red)">+ ₹${fmt(since)} credit</span> &nbsp;·&nbsp; <span style="color:var(--green)">− ₹${fmt(p.paid)} deposit</span>
-          </div>
-        </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:11px;font-weight:600;color:${bal>0?'var(--ioc-red)':'var(--green)'}">${bal>0?'⚠️ Due':'✅ Clear'}</div>
-          <div style="font-size:16px;font-weight:700;color:${bal>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(Math.abs(bal))}</div>
-        </div>
-      </div>`;
-    }).join('');
-    return`<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 4px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--ink-light)">${CAT_LABEL[cat]} (${rows.length})</div>
-      <div style="font-size:12px;font-weight:700;color:${sub>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(sub)}</div>
-    </div>${items}`;
-  }).join('');
+  const partyRows=creditPartyRowsHtml(listed,creditSearchQ);
 
   document.getElementById('stepContent').innerHTML=`
   <!-- INFO BANNER -->
@@ -2930,11 +3088,7 @@ function renderCreditSales(){
     <div class="card-title">💰 Record Payment Received</div>
     <div style="font-size:12px;color:var(--ink-light);margin-bottom:12px">Enter when a credit party pays you back. Credit is auto-fetched from Daily Sales.</div>
     <div class="grid2" style="margin-bottom:10px">
-      <div class="field">
-        <div class="lbl">Party Name</div>
-        <input type="text" id="cr_party" placeholder="Select party" list="partyAutoList">
-        <datalist id="partyAutoList">${Object.values(parties).map(p=>`<option value="${p.display}">`).join('')}</datalist>
-      </div>
+      ${partyPickerHtml('cr','Party',false)}
       <div class="field">
         <div class="lbl">Amount Paid (₹)</div>
         <input type="number" id="cr_amt" placeholder="0" step="0.01">
@@ -2951,11 +3105,13 @@ function renderCreditSales(){
     <button class="btn-primary" onclick="addPaymentTxn()">✅ Record Payment</button>
   </div>
 
-  <!-- CUSTOMER BALANCES (data-driven, all parties) -->
+  ${creditUnassignedHtml(un)}
+  <!-- CUSTOMER BALANCES — one card per PARTY (same names never merge) -->
   <div class="card">
     <div class="card-title">📋 Customer Balances (${listed.length})</div>
-    <div style="font-size:11px;color:var(--ink-light);margin-bottom:10px">Auto-updated from Daily Sales. Tap any account for its full ledger &amp; history.</div>
-    ${partyRows||'<div style="text-align:center;padding:20px;color:var(--ink-light)">No credit accounts yet.</div>'}
+    <div style="font-size:11px;color:var(--ink-light);margin-bottom:10px">Auto-updated from Daily Sales. Each card is its own account — parties with the same name never merge. Tap one for its ledger &amp; history.</div>
+    <input type="text" id="cr_search" value="${offEsc(creditSearchQ)}" placeholder="🔍 Search name, phone or note" oninput="creditSearch(this.value)" style="margin-bottom:10px">
+    <div id="creditList">${partyRows||'<div style="text-align:center;padding:20px;color:var(--ink-light)">No credit accounts yet.</div>'}</div>
   </div>
   <div id="creditPartyDetail" style="display:none"></div>`;
 }
@@ -3064,24 +3220,24 @@ async function addUnlistedToRecon(name){
 }
 
 async function addPaymentTxn(){
-  const party=gs('cr_party'),amt=gv('cr_amt'),date=document.getElementById('cr_date').value,note=gs('cr_note');
-  if(!party||!amt){alert('Enter party name and amount');return;}
-  creditData.push({party,type:'payment',amt,date,note});
+  const amt=gv('cr_amt'),date=document.getElementById('cr_date').value||todayKey0(),note=gs('cr_note');
+  if(!(amt>0)){alert('Enter the amount paid');return;}
+  if(date<activeRecon().date){alert(`Payments before ${activeRecon().date} are inside the opening balance — pick a later date.`);return;}
+  const r=await partyPickerResolve('cr');if(!r)return;
+  creditData.push({partyId:r.partyId,party:r.name,type:'payment',amt,date,note,source:'manual',savedAt:new Date().toISOString()});
   await cloudSet(STORE_KEY_CREDIT,creditData);
-  document.getElementById('cr_party').value='';
-  document.getElementById('cr_amt').value='';
-  document.getElementById('cr_note').value='';
+  document.getElementById('cr_amt').value='';document.getElementById('cr_note').value='';
   renderCreditSales();
-  alert(`✅ Payment of ₹${fmt(amt)} recorded for ${party}`);
+  alert(`✅ Payment of ₹${fmt(amt)} recorded for ${r.name}`);
 }
 
 // Keep addCreditTxn for any legacy calls
 async function addCreditTxn(){addPaymentTxn();}
 
-function showCreditParty(name,pObj){
-  // Alias-aware lookup so every name variant lands on the same account
-  const key=creditAlias(creditKeyOf(name));
-  const party=computeCreditParties()[key]||{display:name,credit:0,paid:0,txns:[]};
+function showCreditParty(partyId){
+  // Opens ONE party by its id — never by name (two parties may share a name).
+  const party=computeCreditParties()[partyId]||{id:partyId,display:'(unknown party)',credit:0,paid:0,txns:[]};
+  const name=party.display,pdet=partyDetail(partyById(partyId),partyId);
   const allTxns=[...party.txns].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 
   let running=0;
@@ -3111,7 +3267,7 @@ function showCreditParty(name,pObj){
     <div class="report-header">
       <div>
         <div class="report-title">${party.display||name}</div>
-        <div class="report-sub">Credit Ledger — Base: Recon ${activeRecon().date}${party.cat?' · '+party.cat:''}</div>
+        <div class="report-sub">Credit Ledger — Base: Recon ${activeRecon().date}${party.cat?' · '+party.cat:''}${pdet?' · '+offEsc(pdet):''}${/ID …/.test(pdet)?'':' · ID …'+String(partyId).slice(-4)}</div>
       </div>
       <div style="text-align:right">
         <div style="font-size:10px;color:rgba(255,255,255,.4)">Balance Due</div>
@@ -3144,8 +3300,10 @@ function showCreditParty(name,pObj){
       </div>
     </div>
   </div>
+  <div id="partyEditBox"></div>
   <div class="btn-row">
     <button class="btn-secondary" onclick="document.getElementById('creditPartyDetail').style.display='none'">← Back</button>
+    <button class="btn-secondary" onclick="partyEditForm('${partyId}')">✏️ Edit party details</button>
     <button class="btn-secondary" onclick="window.print()">🖨️ Print</button>
   </div>`;
   det.scrollIntoView({behavior:'smooth',block:'start'});
@@ -3892,9 +4050,9 @@ function renderOwnerCreditInto(target){
   const el=document.getElementById(target);if(!el)return;
   const today=todayKey0();
   const cp=computeCreditParties();
-  const parties={};Object.values(cp).forEach(p=>{parties[p.display]={total:p.credit,paid:p.paid};});
+  const parties={};Object.values(cp).forEach(p=>{parties[p.id]={name:p.display,det:partyDetail(partyById(p.id),p.id),total:p.credit,paid:p.paid};});   // keyed by partyId — same names stay separate
   const totalDue=Object.values(parties).reduce((a,p)=>a+(p.total-p.paid),0);   // no clamp — overpayments must net off
-  const rows=Object.entries(parties).sort(([,a],[,b])=>(b.total-b.paid)-(a.total-a.paid)).map(([n,p])=>`<tr style="cursor:pointer" onclick="showOwnerCreditDetailIn('${n.replace(/'/g,"\\'")}','ownerSubTabContent')"><td style="font-weight:600">${n}</td><td class="right">₹${fmt(p.total)}</td><td class="right" style="color:var(--green)">₹${fmt(p.paid)}</td><td class="right" style="color:${p.total-p.paid>0?'var(--ioc-red)':'var(--green)'};font-weight:700">₹${fmt(p.total-p.paid)}</td></tr>`).join('');
+  const rows=Object.entries(parties).sort(([,a],[,b])=>(b.total-b.paid)-(a.total-a.paid)).map(([n,p])=>`<tr style="cursor:pointer" onclick="showOwnerCreditDetailIn('${n}','ownerSubTabContent')"><td style="font-weight:600">${offEsc(p.name)}${p.det?`<div style="font-size:10px;font-weight:400;color:var(--ink-light)">${offEsc(p.det)}</div>`:''}</td><td class="right">₹${fmt(p.total)}</td><td class="right" style="color:var(--green)">₹${fmt(p.paid)}</td><td class="right" style="color:${p.total-p.paid>0?'var(--ioc-red)':'var(--green)'};font-weight:700">₹${fmt(p.total-p.paid)}</td></tr>`).join('');
   el.innerHTML=`
     <div class="card"><div class="card-title">📝 Credit Outstanding — ₹${fmt(totalDue)}</div>
       <div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Party</th><th>Credit</th><th>Paid</th><th>Balance</th></tr></thead>
@@ -3902,9 +4060,10 @@ function renderOwnerCreditInto(target){
     </div><div id="creditSubDetail"></div>`;
 }
 
-function showOwnerCreditDetailIn(name){
+function showOwnerCreditDetailIn(partyId){
   const cp=computeCreditParties();
-  const party=cp[creditAlias(creditKeyOf(name))]||{credit:0,paid:0,txns:[]};
+  const party=cp[partyId]||{display:'(unknown party)',credit:0,paid:0,txns:[]};
+  const name=party.display;
   const txns=[...party.txns].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   let run=0;
   const total=party.credit;
@@ -5599,9 +5758,11 @@ function buildCreditRecords(f,t2){
   if(!entries.length)return`<div class="alert-warn">No credit records in this range.</div>`;
   const parties={};
   (f?creditData:creditData).forEach(t=>{
-    if(!parties[t.party])parties[t.party]={total:0,paid:0};
-    if(t.type==='credit')parties[t.party].total+=t.amt;
-    else parties[t.party].paid+=t.amt;
+    // group by partyId where the entry has one; older name-only entries stay grouped by their own name
+    const P=partyById(t.partyId),k=P?t.partyId:'name:'+t.party;
+    if(!parties[k])parties[k]={name:P?P.name:t.party,total:0,paid:0};
+    if(t.type==='credit')parties[k].total+=t.amt;
+    else parties[k].paid+=t.amt;
   });
   const totalDue=Object.values(parties).reduce((a,p)=>a+(p.total-p.paid),0);   // no clamp — overpayments must net off
   const rows=entries.map(c=>`<tr>
@@ -5611,7 +5772,7 @@ function buildCreditRecords(f,t2){
     <td class="right" style="font-weight:700;color:${c.type==='credit'?'var(--ioc-red)':'var(--green)'}">${c.type==='credit'?'+':'-'}₹${fmt(c.amt)}</td>
     <td style="font-size:11px;color:var(--ink-light)">${c.note||'—'}</td>
   </tr>`).join('');
-  const partyRows=Object.entries(parties).map(([n,p])=>`<tr><td style="font-weight:600">${n}</td><td class="right">₹${fmt(p.total)}</td><td class="right" style="color:var(--green)">₹${fmt(p.paid)}</td><td class="right" style="color:${p.total-p.paid>0?'var(--ioc-red)':'var(--green)'};font-weight:700">₹${fmt(p.total-p.paid)}</td></tr>`).join('');
+  const partyRows=Object.entries(parties).map(([n,p])=>`<tr><td style="font-weight:600">${offEsc(p.name)}</td><td class="right">₹${fmt(p.total)}</td><td class="right" style="color:var(--green)">₹${fmt(p.paid)}</td><td class="right" style="color:${p.total-p.paid>0?'var(--ioc-red)':'var(--green)'};font-weight:700">₹${fmt(p.total-p.paid)}</td></tr>`).join('');
   return`
     <div class="card"><div class="card-title">📝 Party Outstanding — Total Due ₹${fmt(totalDue)}</div>
       <div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Party</th><th>Credit</th><th>Paid</th><th>Balance</th></tr></thead><tbody>${partyRows}</tbody></table></div>
@@ -6225,7 +6386,7 @@ async function saveEditRecord(){
   // records by computeCreditParties() as payments, so no deposit push needed here.
   creditData=creditData.filter(t=>!(t.date===d.date&&(t.source==='daily_sales'||t.source==='daily_deposit')));
   (d.creditSaleItems||[]).forEach(x=>{
-    if(x.name&&x.amt>0)creditData.push({party:x.name,type:'credit',amt:x.amt,date:d.date,note:`From Daily Sales ${d.date}`,source:'daily_sales',savedAt:new Date().toISOString()});
+    if(x.name&&x.amt>0)creditData.push({party:x.name,partyId:x.partyId||'',type:'credit',amt:x.amt,date:d.date,note:`From Daily Sales ${d.date}`,source:'daily_sales',savedAt:new Date().toISOString()});
   });
   await cloudSet(STORE_KEY_CREDIT,creditData);
 
