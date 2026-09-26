@@ -885,32 +885,39 @@ let firebaseReady=true; // REST API always ready
 
 async function initFirebase(){return;} // not needed with REST
 
+// Keys whose last read had to fall back to this device's saved copy (fetch failed).
+const cloudStaleKeys=new Set();
 async function cloudGet(k){
+  let val;
   try{
     // Cache-buster: a unique query param + no-store stops the browser/proxy from
-    // serving a stale cached copy of the Firebase GET (which showed the old recon
-    // as "connected" even after a fresh write). Every read now hits Firebase live.
+    // serving a stale cached copy of the Firebase GET. Every read hits Firebase live.
     const res=await fetch(`${FB_URL}/${k}.json?_=${Date.now()}`,{method:'GET',cache:'no-store',headers:{'Accept':'application/json'}});
     if(!res.ok)throw new Error('HTTP '+res.status);
-    const val=await res.json();
-    if(val!==null)localStorage.setItem(k,JSON.stringify(val));
-    return val;
+    val=await res.json();
   }catch(e){
     console.warn('Firebase GET failed, using localStorage:',e.message);
+    cloudStaleKeys.add(k);
     try{const c=localStorage.getItem(k);return c?JSON.parse(c):null;}catch(e2){return null;}
   }
+  cloudStaleKeys.delete(k);
+  // Keep an offline copy. If the browser's storage is full this must NOT discard the
+  // fresh data — it used to, silently serving an old copy under a green badge
+  // (26/09/2026: a pre-migration copy showed "Needs a party" on one device only).
+  if(val!==null){try{localStorage.setItem(k,JSON.stringify(val));}catch(e){console.warn('Offline copy not updated for',k,'—',e.message);}}
+  return val;
 }
 
 async function cloudSet(k,v){
+  let saved=false;
   try{
     const res=await fetch(`${FB_URL}/${k}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(v)});
     if(!res.ok)throw new Error('HTTP '+res.status);
-    localStorage.setItem(k,JSON.stringify(v));
-    return true;
-  }catch(e){
-    console.warn('Firebase SET failed, using localStorage:',e.message);
-    try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e2){return false;}
-  }
+    saved=true;
+  }catch(e){console.warn('Firebase SET failed, using localStorage:',e.message);}
+  // A full browser storage must not turn a successful Firebase save into "failed".
+  try{localStorage.setItem(k,JSON.stringify(v));}catch(e){console.warn('Offline copy not updated for',k,'—',e.message);return saved;}
+  return true;
 }
 
 // Granular writes — PATCH merges only the keys given, POST/DELETE touch one child.
@@ -1025,7 +1032,9 @@ async function loadCloud(){
     if(window.VR&&VR.hydrate)VR.hydrate(vAl,vPh,vCa);
     const rcn=await cloudGet(STORE_KEY_RECON);if(rcn){reconData=rcn;_creditAliasMap=null;}
     const st=await cloudGet(STORE_KEY_SETTINGS);if(st)appSettings=mergeSettings(st);
-    if(cloudData.records.length>0){
+    if(cloudStaleKeys.size){
+      syncStatus('err',"⚠️ Couldn't refresh "+cloudStaleKeys.size+" data set(s) — showing this device's saved copy. Tap to retry.");
+    } else if(cloudData.records.length>0){
       syncStatus('ok','☁️ Firebase connected');
     } else {
       syncStatus('ok','☁️ Firebase connected (no data yet)');
@@ -2791,8 +2800,13 @@ async function saveTruckEdit(){
 // is never guessed onto a party by name — it is listed under "Needs a party".
 // ══════════════════════════════════════════════════════════════════════════════
 function partyNewId(){return 'party_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
-function partyById(id){const p=id&&partiesData&&partiesData[id];return p&&typeof p==='object'&&p.name?p:null;}
-function partyAll(){return Object.entries(partiesData||{}).filter(([,p])=>p&&typeof p==='object'&&p.name).map(([id,p])=>({...p,id}));}
+// A party merged on the owner's explicit instruction keeps its record (audit trail) with
+// mergedInto → the surviving party. Every lookup resolves through it, so an entry that
+// still carries the old id (e.g. from a phone with stale data) lands on the survivor.
+// Merged records never appear in lists or pickers. Nothing is ever merged automatically.
+function partyCanon(id){let n=0;while(id&&partiesData&&partiesData[id]&&partiesData[id].mergedInto&&partiesData[partiesData[id].mergedInto]&&n++<5)id=partiesData[id].mergedInto;return id;}
+function partyById(id){const c=partyCanon(id),p=c&&partiesData&&partiesData[c];return p&&typeof p==='object'&&p.name?p:null;}
+function partyAll(){return Object.entries(partiesData||{}).filter(([,p])=>p&&typeof p==='object'&&p.name&&!p.mergedInto).map(([id,p])=>({...p,id}));}
 function partyCache(){try{localStorage.setItem(STORE_KEY_PARTIES,JSON.stringify(partiesData));}catch(e){}}
 // Small identifying detail so same-named parties can be told apart on screen.
 function partyDetail(p,id){
@@ -2885,7 +2899,7 @@ function partyPickerReset(px){
 // Party selector on an already-listed credit/deposit line: changing it moves THAT
 // line to the chosen party (a correction of the line, never a merge of parties).
 function partyLineSelect(kind,i,pid,snap){
-  const ok=!!partyById(pid);
+  pid=partyCanon(pid);const ok=!!partyById(pid);
   const opts=partyAll().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${p.id}" ${p.id===pid?'selected':''}>${offEsc(partyOptionLabel(p))}</option>`).join('');
   return `<select onchange="partyReassign('${kind}',${i},this.value)" title="Party for this line" style="padding:4px 6px;font-size:12px;border:1px solid ${ok?'var(--ioc-border)':'var(--ioc-red)'};border-radius:6px;max-width:100%;background:#fff;color:var(--ink)">${ok?'':`<option value="" selected>⚠️ Pick party${snap?' (typed: '+offEsc(snap)+')':''}</option>`}${opts}</select>`;
 }
@@ -2915,6 +2929,7 @@ function computeCreditParties(){
   const parties={},unassigned=[];
   const R=activeRecon();
   const get=id=>{
+    id=partyCanon(id);
     if(!parties[id]){const P=partyById(id)||{};parties[id]={id,display:P.name||'(missing party)',phone:P.phone||'',note:P.note||'',credit:0,paid:0,base:0,cat:P.cat||'',listed:true,txns:[]};}
     return parties[id];
   };
@@ -2958,6 +2973,19 @@ function computeCreditParties(){
   return parties;
 }
 
+// ONE control total for every screen (owner rule since the Aug audit: an overpayment
+// pulls the total DOWN). net = Σ every party balance + any "Needs a party" lines;
+// due and overpaid are reported alongside so an overpayment is never hidden.
+function creditTotals(cp){
+  cp=cp||computeCreditParties();
+  const un=cp._unassigned||[];let due=0,over=0,nDue=0,nOver=0,sum=0;
+  Object.values(cp).forEach(p=>{const b=p.credit-p.paid;sum+=b;if(b>0.5){due+=b;nDue++;}else if(b<-0.5){over+=b;nOver++;}});
+  const unNet=un.reduce((a,u)=>a+(u.type==='payment'?-u.amt:u.amt),0);
+  return{net:sum+unNet,due,over,nDue,nOver,unNet,unCount:un.length};
+}
+function creditBreakdownText(CT){
+  return `Due ₹${fmt(CT.due)} (${CT.nDue})${CT.nOver?` · Overpaid −₹${fmt(-CT.over)} (${CT.nOver})`:''}${CT.unCount?` · Needs a party ${CT.unNet<0?'−':''}₹${fmt(Math.abs(CT.unNet))}`:''}`;
+}
 // ── Credit screen pieces ──────────────────────────────────────────────────────
 let creditSearchQ='';
 function creditPartyRowsHtml(listed,q){
@@ -3001,6 +3029,8 @@ function creditUnassignedHtml(un){
   if(!un||!un.length)return'';
   return `<div class="card" style="border:1px dashed var(--ioc-red)"><div class="card-title">⚠️ Needs a party (${un.length})</div>
     <div style="font-size:12px;color:var(--ink-light);margin-bottom:10px">These entries have no party attached (e.g. saved from a phone still running an older version). They are counted in the total but in no account, and are never matched by name. Open the day and pick the party for each line.</div>
+    ${cloudStaleKeys.size?`<div class="alert-warn">⚠️ This device could not load the latest data, so these entries may already be fixed on the server.</div>`:''}
+    <button class="btn-secondary" style="margin-bottom:10px;font-size:12px" onclick="loadCloud().then(()=>renderCreditSales())">🔄 Reload latest data</button>
     ${un.map(u=>`<div class="hist-item" style="cursor:default"><div style="flex:1"><div class="hist-date" style="font-size:13px">${offEsc(u.name||'(no name)')}</div><div class="hist-sub">${u.date} · ${u.src}</div></div><div style="text-align:right;margin-right:10px;font-weight:700;color:${u.type==='payment'?'var(--green)':'var(--ioc-red)'}">${u.type==='payment'?'−':'+'}₹${fmt(u.amt)}</div>${/Daily Sales/.test(u.src)?`<button class="btn-secondary" style="font-size:11px;padding:6px 10px" onclick="openModule('sales');editSavedRecord('${u.date}')">Fix →</button>`:''}</div>`).join('')}
   </div>`;
 }
@@ -3041,7 +3071,7 @@ function renderCreditSales(){
   // No Math.max(0,…) here — an overpaid account is real money and must pull the
   // total DOWN. Clamping it to zero silently hid a ₹3,000 overpayment (audit 03 Aug 2026).
   const un=parties._unassigned||[];
-  const totalDue=listed.reduce((a,p)=>a+(p.credit-p.paid),0)+un.reduce((a,u)=>a+(u.type==='payment'?-u.amt:u.amt),0);
+  const CT=creditTotals(parties),totalDue=CT.net;
   const newCredit=listed.reduce((a,p)=>a+(p.credit-(p.base||0)),0);
   const totalPaid=listed.reduce((a,p)=>a+p.paid,0);
   const totalBase=R.accounts.reduce((a,b)=>a+(+b.amt||0),0);
@@ -3061,6 +3091,7 @@ function renderCreditSales(){
     <div style="padding:14px;background:${totalDue>0?'#FFF5F5':'#f0fff4'};border-radius:var(--rl);border:1px solid ${totalDue>0?'var(--ioc-red)':'var(--green)'};text-align:center">
       <div style="font-size:10px;font-weight:700;color:${totalDue>0?'var(--ioc-red)':'var(--green)'};text-transform:uppercase;margin-bottom:4px">Total Outstanding</div>
       <div style="font-size:22px;font-weight:700;color:${totalDue>0?'var(--ioc-red)':'var(--green)'}">₹${fmt(totalDue)}</div>
+      <div style="font-size:10px;color:var(--ink-light);margin-top:3px">${creditBreakdownText(CT)}</div>
     </div>
     <div style="padding:14px;background:#fff;border-radius:var(--rl);border:1px solid var(--ioc-border);text-align:center">
       <div style="font-size:10px;font-weight:700;color:var(--ink-light);text-transform:uppercase;margin-bottom:4px">Accounts</div>
@@ -3235,6 +3266,7 @@ async function addPaymentTxn(){
 async function addCreditTxn(){addPaymentTxn();}
 
 function showCreditParty(partyId){
+  partyId=partyCanon(partyId);
   // Opens ONE party by its id — never by name (two parties may share a name).
   const party=computeCreditParties()[partyId]||{id:partyId,display:'(unknown party)',credit:0,paid:0,txns:[]};
   const name=party.display,pdet=partyDetail(partyById(partyId),partyId);
@@ -3404,9 +3436,8 @@ function renderOwnerReport(){
       if(!recs.find(r=>r.date===yStr)&&new Date().getHours()>10)
         alerts.push({ic:'calendar',t:`No sales record for yesterday (${yStr})`});
       const cp=computeCreditParties();
-      const outstanding=Object.values(cp).filter(v=>v.credit-v.paid>0);
-      const totalOut=outstanding.reduce((a,v)=>a+(v.credit-v.paid),0);
-      if(totalOut>0)alerts.push({ic:'ledger',t:`Outstanding credit ₹${Number(totalOut).toLocaleString('en-IN')} from ${outstanding.length} parties`});
+      const CT=creditTotals(cp);   // same control total as the Credit tab
+      if(CT.net>0||CT.due>0)alerts.push({ic:'ledger',t:`Outstanding credit ₹${Number(CT.net).toLocaleString('en-IN')} — ${creditBreakdownText(CT)}`});
       const lastInsp=Object.entries(inspectData).sort((a,b)=>b[0].localeCompare(a[0]))[0];
       if(lastInsp&&(Math.abs(lastInsp[1].hsdDiff||0)>inspTol('HSD')||Math.abs(lastInsp[1].msDiff||0)>inspTol('MS')))
         alerts.push({ic:'gauge',t:`Stock variance on ${lastInsp[0]} — HSD ${(lastInsp[1].hsdDiff||0).toFixed(1)}L · MS ${(lastInsp[1].msDiff||0).toFixed(1)}L`});
@@ -4051,10 +4082,10 @@ function renderOwnerCreditInto(target){
   const today=todayKey0();
   const cp=computeCreditParties();
   const parties={};Object.values(cp).forEach(p=>{parties[p.id]={name:p.display,det:partyDetail(partyById(p.id),p.id),total:p.credit,paid:p.paid};});   // keyed by partyId — same names stay separate
-  const totalDue=Object.values(parties).reduce((a,p)=>a+(p.total-p.paid),0);   // no clamp — overpayments must net off
+  const CT=creditTotals(cp),totalDue=CT.net;   // same control total as the Credit tab
   const rows=Object.entries(parties).sort(([,a],[,b])=>(b.total-b.paid)-(a.total-a.paid)).map(([n,p])=>`<tr style="cursor:pointer" onclick="showOwnerCreditDetailIn('${n}','ownerSubTabContent')"><td style="font-weight:600">${offEsc(p.name)}${p.det?`<div style="font-size:10px;font-weight:400;color:var(--ink-light)">${offEsc(p.det)}</div>`:''}</td><td class="right">₹${fmt(p.total)}</td><td class="right" style="color:var(--green)">₹${fmt(p.paid)}</td><td class="right" style="color:${p.total-p.paid>0?'var(--ioc-red)':'var(--green)'};font-weight:700">₹${fmt(p.total-p.paid)}</td></tr>`).join('');
   el.innerHTML=`
-    <div class="card"><div class="card-title">📝 Credit Outstanding — ₹${fmt(totalDue)}</div>
+    <div class="card"><div class="card-title">📝 Credit Outstanding — ₹${fmt(totalDue)} <span style="font-size:11px;font-weight:400;color:var(--ink-light)">${creditBreakdownText(CT)}</span></div>
       <div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Party</th><th>Credit</th><th>Paid</th><th>Balance</th></tr></thead>
       <tbody>${rows||'<tr><td colspan="4" style="text-align:center;color:var(--ink-light);padding:12px">No data</td></tr>'}</tbody></table></div>
     </div><div id="creditSubDetail"></div>`;
@@ -4463,7 +4494,7 @@ function showPortfolioResult(hsdRsp,msRsp){
 
   // Credit outstanding (debt) — canonical computation (matches Credit tab)
   const _cp=computeCreditParties();
-  const creditDue=Object.values(_cp).reduce((a,p2)=>a+(p2.credit-p2.paid),0);   // no clamp — overpayments must net off
+  const creditDue=creditTotals(_cp).net;   // same control total as the Credit tab (overpayments net off)
   const netWorth=grandTotal+creditDue; // credit due is an asset
 
   // Growth % vs previous month
